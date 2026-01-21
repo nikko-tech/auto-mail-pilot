@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# GAS / clasp
+.clasp.json.bak
+.clasp.json.personal.bak
+node_modules/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*~
