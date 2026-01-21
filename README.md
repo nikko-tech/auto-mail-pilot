@@ -1,5 +1,25 @@
 # Auto Mail Pilot
 
+## Phase 2 Features ✅ (Completed)
+
+Phase 2 では以下の高度な機能を実装しました：
+
+- **動的宛先データ取得**: Google Sheets「宛先リスト」から自動同期
+- **変数置換機能**: `{{name}}`, `{{company}}`, `{{email}}`, `{{id}}` の自動置換
+- **複数宛先同時送信**: 最大3名までタブ形式で個別編集・一括送信
+- **署名管理**: 「署名」シートから取得し、送信時に自動挿入
+- **宛先-テンプレート紐付け**: 「紐付けマスター」に基づく自動テンプレート適用
+- **完全日本語化**: 全UIコンポーネントの日本語翻訳
+- **日本語フォント対応**: MS ゴシックの自動ロード
+
+詳細な使い方は [Phase 2 Walkthrough](./brain/e601e159-403f-41d3-bba4-472f54571e11/phase2_walkthrough.md) をご覧ください。
+
+---
+
+## Post-Mortem
+
+開発中に遭遇した課題と解決策は [Post-Mortem](./brain/e601e159-403f-41d3-bba4-472f54571e11/post_mortem.md) をご覧ください。
+
 Rust (egui) と Google Apps Script (GAS) を連携させたメール自動送信アプリケーションです。
 
 ## 🚀 クイックスタート
