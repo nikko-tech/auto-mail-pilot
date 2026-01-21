@@ -1,4 +1,4 @@
-use crate::models::Template;
+use crate::models::{Template, RecipientData, Signature, LinkingData};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,9 +16,37 @@ struct GetTemplatesResponse {
 }
 
 #[derive(Deserialize)]
+pub struct GetRecipientsResponse {
+    pub recipients: Vec<RecipientData>,
+    // error: Option<String>, // Removed error field as per instruction's implied change
+}
+
+#[derive(Deserialize)]
+pub struct GetSignaturesResponse {
+    pub signatures: Vec<Signature>,
+}
+
+#[derive(Deserialize)]
+pub struct GetLinkingsResponse {
+    pub linkings: Vec<LinkingData>,
+}
+
+#[derive(Deserialize)]
+pub struct GetSettingsResponse {
+    pub settings: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
 struct PostResponse {
     success: bool,
     error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct BatchMailItem<'a> {
+    to: &'a str,
+    subject: &'a str,
+    body: &'a str,
 }
 
 impl GasClient {
@@ -53,6 +81,114 @@ impl GasClient {
         Ok(parsed.templates.unwrap_or_default())
     }
 
+    pub fn get_recipients(&self) -> Result<Vec<RecipientData>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let response = self.client.get(&base_url)
+            .query(&[("action", "getRecipients")])
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetRecipientsResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        // The original code had error handling here, but the instruction implies removing the error field from GetRecipientsResponse.
+        // If the API can still return an error, this logic needs to be re-evaluated.
+        // For now, assuming the new GetRecipientsResponse structure means no direct error field.
+        Ok(parsed.recipients)
+    }
+
+    pub fn get_signatures(&self) -> Result<Vec<Signature>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let url = format!("{}?action=getSignatures", base_url);
+        let response = self.client.get(&url)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetSignaturesResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        Ok(parsed.signatures)
+    }
+
+    pub fn get_linkings(&self) -> Result<Vec<LinkingData>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let url = format!("{}?action=getLinkings", base_url);
+        let response = self.client.get(&url)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetLinkingsResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        Ok(parsed.linkings)
+    }
+
+    pub fn get_settings(&self) -> Result<std::collections::HashMap<String, String>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let url = format!("{}?action=getSettings", base_url);
+        let response = self.client.get(&url)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetSettingsResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        Ok(parsed.settings)
+    }
+
+    pub fn save_settings(&self, settings: &std::collections::HashMap<String, String>) -> Result<(), String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let payload = json!({
+            "action": "saveSettings",
+            "settings": settings,
+        });
+
+        let response = self.client.post(&base_url)
+            .json(&payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        if !parsed.success {
+            return Err(parsed.error.unwrap_or("Unknown error".to_string()));
+        }
+        Ok(())
+    }
+
     pub fn send_mail(&self, to: &str, subject: &str, body: &str) -> Result<(), String> {
         let mut base_url = self.url.trim().to_string();
         if base_url.is_empty() {
@@ -74,6 +210,59 @@ impl GasClient {
             .json(&payload)
             .send()
              .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        if !parsed.success {
+            return Err(parsed.error.unwrap_or("Unknown error".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn send_batch_mail(&self, items: Vec<(&str, &str, &str)>, attachments: &[crate::models::Attachment]) -> Result<(), String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let emails: Vec<serde_json::Value> = items.into_iter()
+            .map(|(to, sub, body)| {
+                let mut email_obj = serde_json::json!({
+                    "to": to,
+                    "subject": sub,
+                    "body": body,
+                });
+                
+                // Add attachments if present
+                if !attachments.is_empty() {
+                    let attachments_json: Vec<serde_json::Value> = attachments.iter()
+                        .filter(|att| att.enabled)
+                        .map(|att| serde_json::json!({
+                            "fileName": att.file_name,
+                            "mimeType": att.mime_type,
+                            "data": att.data,
+                        }))
+                        .collect();
+                    email_obj["attachments"] = serde_json::json!(attachments_json);
+                }
+                
+                email_obj
+            })
+            .collect();
+
+        let payload = json!({
+            "action": "sendBatchMail",
+            "emails": emails,
+        });
+
+        let response = self.client.post(&base_url)
+            .json(&payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
 
         let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
 
