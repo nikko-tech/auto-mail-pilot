@@ -144,7 +144,18 @@ function doPost(e) {
 
 function sendMail(payload) {
   try {
-    GmailApp.sendEmail(payload.to, payload.subject, payload.body);
+    const options = {};
+    if (payload.attachments && payload.attachments.length > 0) {
+      options.attachments = payload.attachments.map(att => {
+        return Utilities.newBlob(
+          Utilities.base64Decode(att.data),
+          att.mimeType,
+          att.fileName
+        );
+      });
+    }
+
+    GmailApp.sendEmail(payload.to, payload.subject, payload.body, options);
     return ContentService.createTextOutput(JSON.stringify({ success: true }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -158,7 +169,7 @@ function sendMail(payload) {
 
 function sendBatchMail(payload) {
   const results = [];
-  const emails = payload.emails; // Array of {to, subject, body}
+  const emails = payload.emails; // Array of {to, subject, body, attachments}
   
   if (!Array.isArray(emails)) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Emails should be an array" }))
@@ -168,7 +179,17 @@ function sendBatchMail(payload) {
   for (const email of emails) {
     try {
       if (email.to && email.subject && email.body) {
-        GmailApp.sendEmail(email.to, email.subject, email.body);
+        const options = {};
+        if (email.attachments && email.attachments.length > 0) {
+          options.attachments = email.attachments.map(att => {
+            return Utilities.newBlob(
+              Utilities.base64Decode(att.data),
+              att.mimeType,
+              att.fileName
+            );
+          });
+        }
+        GmailApp.sendEmail(email.to, email.subject, email.body, options);
         results.push({ to: email.to, success: true });
       }
     } catch (error) {

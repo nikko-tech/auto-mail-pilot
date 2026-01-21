@@ -14,21 +14,39 @@ impl MailApp {
         // Set up Japanese font
         let mut fonts = egui::FontDefinitions::default();
         
-        // Load MS Gothic from Windows system fonts if available
-        let font_path = "C:\\Windows\\Fonts\\msgothic.ttc";
-        if let Ok(font_data) = std::fs::read(font_path) {
-            fonts.font_data.insert(
-                "jp_font".to_owned(),
-                egui::FontData::from_owned(font_data),
-            );
-            
-            // Put it at the top of the priority list for proportional and monospace
-            fonts.families.get_mut(&egui::FontFamily::Proportional)
-                .unwrap()
-                .insert(0, "jp_font".to_owned());
-            fonts.families.get_mut(&egui::FontFamily::Monospace)
-                .unwrap()
-                .insert(0, "jp_font".to_owned());
+        // Font paths to try: Windows and macOS system fonts
+        let font_paths = [
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
+            "C:\\Windows\\Fonts\\msgothic.ttc",
+            "C:\\Windows\\Fonts\\msmincho.ttc",
+        ];
+
+        let mut font_loaded = false;
+        for path in font_paths {
+            if let Ok(font_data) = std::fs::read(path) {
+                fonts.font_data.insert(
+                    "jp_font".to_owned(),
+                    egui::FontData::from_owned(font_data),
+                );
+                
+                // Put it at the top of the priority list
+                fonts.families.get_mut(&egui::FontFamily::Proportional)
+                    .unwrap()
+                    .insert(0, "jp_font".to_owned());
+                fonts.families.get_mut(&egui::FontFamily::Monospace)
+                    .unwrap()
+                    .insert(0, "jp_font".to_owned());
+                
+                font_loaded = true;
+                break;
+            }
+        }
+        
+        if !font_loaded {
+            // Fallback: If no system font found, the user might see tofu, 
+            // but we'll at least use the default egui fonts.
         }
         
         cc.egui_ctx.set_fonts(fonts);
