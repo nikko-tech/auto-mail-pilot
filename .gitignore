@@ -1,6 +1,9 @@
 /target
+debug
 **/*.rs.bk
 Cargo.lock
+*.pdb
+**/mutants.out*/
 
 # GAS / clasp
 .clasp.json.bak
