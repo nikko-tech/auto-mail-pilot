@@ -11,7 +11,29 @@ pub struct MailApp {
 
 impl MailApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-         Self {
+        // Set up Japanese font
+        let mut fonts = egui::FontDefinitions::default();
+        
+        // Load MS Gothic from Windows system fonts if available
+        let font_path = "C:\\Windows\\Fonts\\msgothic.ttc";
+        if let Ok(font_data) = std::fs::read(font_path) {
+            fonts.font_data.insert(
+                "jp_font".to_owned(),
+                egui::FontData::from_owned(font_data),
+            );
+            
+            // Put it at the top of the priority list for proportional and monospace
+            fonts.families.get_mut(&egui::FontFamily::Proportional)
+                .unwrap()
+                .insert(0, "jp_font".to_owned());
+            fonts.families.get_mut(&egui::FontFamily::Monospace)
+                .unwrap()
+                .insert(0, "jp_font".to_owned());
+        }
+        
+        cc.egui_ctx.set_fonts(fonts);
+
+        Self {
             state: Arc::new(Mutex::new(AppState::default())),
         }
     }
@@ -23,10 +45,10 @@ impl eframe::App for MailApp {
 
         egui::SidePanel::left("nav_panel").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.heading("Menu");
+                ui.heading("メニュー");
                 ui.separator();
-                ui.selectable_value(&mut state.tab, Tab::Main, "✉ Send Mail");
-                ui.selectable_value(&mut state.tab, Tab::Settings, "⚙ Settings");
+                ui.selectable_value(&mut state.tab, Tab::Main, "✉ メール作成");
+                ui.selectable_value(&mut state.tab, Tab::Settings, "⚙ 設定");
             });
         });
 

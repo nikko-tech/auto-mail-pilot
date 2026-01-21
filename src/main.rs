@@ -1,7 +1,8 @@
 mod models;
-mod app;
 mod api;
+mod app;
 mod ui;
+mod utils;
 
 use app::MailApp;
 

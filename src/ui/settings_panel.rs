@@ -3,22 +3,23 @@ use crate::models::AppState;
 use crate::api::GasClient;
 
 pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
-    ui.heading("Settings");
+    ui.heading("設定");
     ui.separator();
 
     ui.group(|ui| {
-        ui.label("GAS Web App URL:");
+        ui.label("GAS ウェブアプリ URL:");
         ui.text_edit_singleline(&mut state.gas_url);
         
-        if ui.button("Test Connection").clicked() {
+        if ui.button("接続テスト").clicked() {
              let client = GasClient::new(state.gas_url.clone());
+             state.status_message = "接続確認中...".to_string();
              match client.get_templates() {
-                 Ok(_) => state.status_message = "Connection OK!".to_string(),
-                 Err(e) => state.status_message = format!("Connection Failed: {}", e),
+                 Ok(_) => state.status_message = "接続成功！".to_string(),
+                 Err(e) => state.status_message = format!("接続失敗: {}", e),
              }
         }
     });
 
     ui.add_space(20.0);
-    ui.label("Note: Deploy the GAS script as a Web App and paste the URL here.");
+    ui.label("注意: URLは自動的に保存・固定されていますが、変更が必要な場合はこちらで編集可能です。");
 }

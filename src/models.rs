@@ -8,7 +8,27 @@ pub struct Template {
     pub body: String,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default)]
+pub struct RecipientData {
+    pub id: String,
+    pub company: String,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Signature {
+    pub name: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LinkingData {
+    pub recipient_id: String,
+    pub template_id: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct MailDraft {
     pub recipients: Vec<RecipientInfo>,
     pub subject: String,
@@ -42,6 +62,12 @@ pub enum Tab {
 pub struct AppState {
     pub templates: Vec<Template>,
     pub selected_template_index: Option<usize>,
+    pub recipients_master: Vec<RecipientData>,
+    pub selected_recipient_index: Option<usize>,
+    pub active_recipient_index: usize, // 0, 1, or 2
+    pub signatures: Vec<Signature>,
+    pub selected_signature_index: Option<usize>,
+    pub linkings_master: Vec<LinkingData>,
     pub mail_draft: MailDraft,
     pub tab: Tab,
     pub gas_url: String,
@@ -49,15 +75,32 @@ pub struct AppState {
     pub is_loading: bool,
 }
 
+impl Default for MailDraft {
+    fn default() -> Self {
+        Self {
+            recipients: vec![RecipientInfo::default(); 3],
+            subject: String::new(),
+            attachments: Vec::new(),
+            signature: String::new(),
+        }
+    }
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self {
             templates: Vec::new(),
             selected_template_index: None,
+            recipients_master: Vec::new(),
+            selected_recipient_index: None,
+            active_recipient_index: 0,
+            signatures: Vec::new(),
+            selected_signature_index: None,
+            linkings_master: Vec::new(),
             mail_draft: MailDraft::default(),
             tab: Tab::Main,
-            gas_url: String::new(),
-            status_message: String::new(),
+            gas_url: "https://script.google.com/macros/s/AKfycbysPQVRy9TJaZl_FzuQDolGqz9X6x03S91zCpbQ4uz24m0AIk5xaVaWoQQktUHQBfSg/exec".to_string(),
+            status_message: "準備完了".to_string(),
             is_loading: false,
         }
     }
