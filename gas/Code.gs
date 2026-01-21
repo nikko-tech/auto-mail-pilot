@@ -9,6 +9,8 @@ function doGet(e) {
     return getSignatures();
   } else if (action === 'getLinkings') {
     return getLinkings();
+  } else if (action === 'getSettings') {
+    return getSettings();
   }
 
   return ContentService.createTextOutput(JSON.stringify({ error: 'Unknown action' }))
@@ -132,6 +134,8 @@ function doPost(e) {
     return sendMail(payload);
   } else if (action === 'sendBatchMail') {
     return sendBatchMail(payload);
+  } else if (action === 'saveSettings') {
+    return saveSettings(payload);
   }
 
   return ContentService.createTextOutput(JSON.stringify({ error: 'Unknown action' }))
@@ -177,4 +181,77 @@ function sendBatchMail(payload) {
     results: results
   }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getSettings() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('設定');
+  
+  if (!sheet) {
+    // 設定シートがない場合は空の設定を返す
+    return ContentService.createTextOutput(JSON.stringify({ settings: {} }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const settings = {};
+  
+  // ヘッダー行をスキップ
+  for (let i = 1; i < data.length; i++) {
+    const key = data[i][0];
+    const value = data[i][1];
+    if (key) {
+      settings[key] = value;
+    }
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ settings: settings }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function saveSettings(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('設定');
+    
+    if (!sheet) {
+      // 設定シートがない場合は作成
+      sheet = ss.insertSheet('設定');
+      sheet.appendRow(['設定キー', '設定値']);
+    }
+
+    const settings = payload.settings;
+    const data = sheet.getDataRange().getValues();
+    
+    // 各設定を保存
+    for (const key in settings) {
+      const value = settings[key];
+      let rowIndex = -1;
+      
+      // 既存の設定を検索
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === key) {
+          rowIndex = i + 1;
+          break;
+        }
+      }
+      
+      if (rowIndex > 0) {
+        // 更新
+        sheet.getRange(rowIndex, 2).setValue(value);
+      } else {
+        // 新規追加
+        sheet.appendRow([key, value]);
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: error.toString()
+    }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }

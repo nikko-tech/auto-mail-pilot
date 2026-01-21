@@ -3,6 +3,7 @@ mod api;
 mod app;
 mod ui;
 mod utils;
+mod file_utils;
 
 use app::MailApp;
 

@@ -47,10 +47,20 @@ pub struct Attachment {
     pub file_path: String,
     pub file_name: String,
     pub enabled: bool,
-    #[serde(skip)]
-    pub data: Option<String>, // Base64 encoded content
-    #[serde(skip)]
-    pub mime_type: Option<String>,
+    pub data: String,        // Base64 encoded content
+    pub mime_type: String,
+}
+
+impl Default for Attachment {
+    fn default() -> Self {
+        Self {
+            file_path: String::new(),
+            file_name: String::new(),
+            enabled: true,
+            data: String::new(),
+            mime_type: String::new(),
+        }
+    }
 }
 
 #[derive(PartialEq)]
