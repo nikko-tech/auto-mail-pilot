@@ -51,3 +51,33 @@ pub fn check_file_size(file_path: &str) -> Result<u64, String> {
     
     Ok(size)
 }
+
+/// Extract potential company name from filename.
+/// Recognizes formats like "CompanyName_Document.pdf", "CompanyName Report.pdf", etc.
+pub fn extract_company_name_from_path(path: &str) -> Option<String> {
+    let file_name = std::path::Path::new(path)
+        .file_stem()?
+        .to_str()?;
+    
+    // Split by common delimiters and take the first part
+    let delimiters = ['_', ' ', '(', '（', '【', '['];
+    let first_part = file_name.split(&delimiters[..]).next()?.trim();
+    
+    if first_part.is_empty() {
+        None
+    } else {
+        Some(first_part.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_company_name() {
+        assert_eq!(extract_company_name_from_path("株式会社サンプル_請求書.pdf"), Some("株式会社サンプル".to_string()));
+        assert_eq!(extract_company_name_from_path("テスト商事 報告書.docx"), Some("テスト商事".to_string()));
+        assert_eq!(extract_company_name_from_path("Example Corp(2024).pdf"), Some("Example Corp".to_string()));
+    }
+}

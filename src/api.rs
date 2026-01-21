@@ -37,6 +37,11 @@ pub struct GetSettingsResponse {
 }
 
 #[derive(Deserialize)]
+pub struct GetLogsResponse {
+    pub logs: Vec<crate::models::HistoryItem>,
+}
+
+#[derive(Deserialize)]
 struct PostResponse {
     success: bool,
     error: Option<String>,
@@ -257,6 +262,109 @@ impl GasClient {
         let payload = json!({
             "action": "sendBatchMail",
             "emails": emails,
+        });
+
+        let response = self.client.post(&base_url)
+            .json(&payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        if !parsed.success {
+            return Err(parsed.error.unwrap_or("Unknown error".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn get_history(&self) -> Result<Vec<crate::models::HistoryItem>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let url = format!("{}?action=getLogs", base_url);
+        let response = self.client.get(&url)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetLogsResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        Ok(parsed.logs)
+    }
+
+    pub fn save_template(&self, template: &crate::models::Template) -> Result<(), String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let payload = json!({
+            "action": "saveTemplate",
+            "template": template,
+        });
+
+        let response = self.client.post(&base_url)
+            .json(&payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        if !parsed.success {
+            return Err(parsed.error.unwrap_or("Unknown error".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn delete_template(&self, name: &str) -> Result<(), String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let payload = json!({
+            "action": "deleteTemplate",
+            "name": name,
+        });
+
+        let response = self.client.post(&base_url)
+            .json(&payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+
+        if !parsed.success {
+            return Err(parsed.error.unwrap_or("Unknown error".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn save_recipient(&self, recipient: &crate::models::RecipientData) -> Result<(), String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let payload = json!({
+            "action": "saveRecipient",
+            "recipient": recipient,
         });
 
         let response = self.client.post(&base_url)

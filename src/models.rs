@@ -51,6 +51,15 @@ pub struct Attachment {
     pub mime_type: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HistoryItem {
+    pub date: String,
+    pub to: String,
+    pub subject: String,
+    pub body: String,
+    pub status: String,
+}
+
 impl Default for Attachment {
     fn default() -> Self {
         Self {
@@ -66,6 +75,7 @@ impl Default for Attachment {
 #[derive(PartialEq)]
 pub enum Tab {
     Main,
+    History,
     Settings,
 }
 
@@ -79,6 +89,7 @@ pub struct AppState {
     pub selected_signature_index: Option<usize>,
     pub linkings_master: Vec<LinkingData>,
     pub mail_draft: MailDraft,
+    pub history: Vec<HistoryItem>,
     pub tab: Tab,
     pub gas_url: String,
     pub status_message: String,
@@ -108,6 +119,7 @@ impl Default for AppState {
             selected_signature_index: None,
             linkings_master: Vec::new(),
             mail_draft: MailDraft::default(),
+            history: Vec::new(),
             tab: Tab::Main,
             gas_url: "https://script.google.com/macros/s/AKfycbysPQVRy9TJaZl_FzuQDolGqz9X6x03S91zCpbQ4uz24m0AIk5xaVaWoQQktUHQBfSg/exec".to_string(),
             status_message: "準備完了".to_string(),
