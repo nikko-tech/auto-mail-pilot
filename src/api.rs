@@ -37,6 +37,11 @@ pub struct GetSettingsResponse {
 }
 
 #[derive(Deserialize)]
+pub struct GetLogsResponse {
+    pub logs: Vec<crate::models::HistoryItem>,
+}
+
+#[derive(Deserialize)]
 struct PostResponse {
     success: bool,
     error: Option<String>,
@@ -270,5 +275,24 @@ impl GasClient {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
         }
         Ok(())
+    }
+
+    pub fn get_history(&self) -> Result<Vec<crate::models::HistoryItem>, String> {
+        let mut base_url = self.url.trim().to_string();
+        if base_url.is_empty() {
+            return Err("GAS URL is not set".to_string());
+        }
+
+        if let Some(pos) = base_url.find('?') {
+            base_url.truncate(pos);
+        }
+
+        let url = format!("{}?action=getLogs", base_url);
+        let response = self.client.get(&url)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let parsed: GetLogsResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        Ok(parsed.logs)
     }
 }

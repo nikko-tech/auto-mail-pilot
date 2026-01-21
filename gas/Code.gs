@@ -11,6 +11,8 @@ function doGet(e) {
     return getLinkings();
   } else if (action === 'getSettings') {
     return getSettings();
+  } else if (action === 'getLogs') {
+    return getLogs();
   }
 
   return ContentService.createTextOutput(JSON.stringify({ error: 'Unknown action' }))
@@ -156,6 +158,15 @@ function sendMail(payload) {
     }
 
     GmailApp.sendEmail(payload.to, payload.subject, payload.body, options);
+    
+    // Log history
+    logSentMail({
+      to: payload.to,
+      subject: payload.subject,
+      body: payload.body,
+      status: "Success"
+    });
+
     return ContentService.createTextOutput(JSON.stringify({ success: true }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -191,9 +202,25 @@ function sendBatchMail(payload) {
         }
         GmailApp.sendEmail(email.to, email.subject, email.body, options);
         results.push({ to: email.to, success: true });
+        
+        // Log history
+        logSentMail({
+          to: email.to,
+          subject: email.subject,
+          body: email.body,
+          status: "Success"
+        });
       }
     } catch (error) {
       results.push({ to: email.to, success: false, error: error.toString() });
+      
+      // Log failure
+      logSentMail({
+        to: email.to,
+        subject: email.subject,
+        body: email.body,
+        status: "Error: " + error.toString()
+      });
     }
   }
 
@@ -275,4 +302,50 @@ function saveSettings(payload) {
     }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+function logSentMail(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('送信ログ');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('送信ログ');
+    sheet.appendRow(['送信日時', '宛先', '件名', '本文', 'ステータス']);
+  }
+  
+  sheet.appendRow([
+    new Date(),
+    data.to,
+    data.subject,
+    data.body.substring(0, 1000), // Limit body size in spreadsheet
+    data.status
+  ]);
+}
+
+function getLogs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('送信ログ');
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({ logs: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const logs = [];
+  
+  // Get last 50 logs, skip header
+  const startRow = Math.max(1, data.length - 50);
+  for (let i = data.length - 1; i >= startRow; i--) {
+    logs.push({
+      date: data[i][0],
+      to: data[i][1],
+      subject: data[i][2],
+      body: data[i][3],
+      status: data[i][4]
+    });
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ logs: logs }))
+    .setMimeType(ContentService.MimeType.JSON);
 }

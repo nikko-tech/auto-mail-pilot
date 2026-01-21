@@ -70,28 +70,35 @@ impl MailApp {
             state.status_message = "マスターデータを取得中...".to_string();
             state.is_loading = true;
             
-            let t_result = client.get_templates();
-            let r_result = client.get_recipients();
-            let s_result = client.get_signatures();
-            let l_result = client.get_linkings();
-            
-            match (t_result, r_result, s_result, l_result) {
-                (Ok(templates), Ok(recipients), Ok(signatures), Ok(linkings)) => {
-                    state.templates = templates;
-                    state.recipients_master = recipients;
-                    state.signatures = signatures;
-                    state.linkings_master = linkings;
-                    state.status_message = "起動完了 - マスターデータ取得成功".to_string();
-                    
-                    // Select default signature if not already set
-                    if state.selected_signature_index.is_none() && !state.signatures.is_empty() {
-                        state.selected_signature_index = Some(0);
-                    }
-                }
-                (Err(e), _, _, _) => state.status_message = format!("起動時エラー: テンプレート取得失敗 - {}", e),
-                (_, Err(e), _, _) => state.status_message = format!("起動時エラー: 宛先リスト取得失敗 - {}", e),
-                (_, _, Err(e), _) => state.status_message = format!("起動時エラー: 署名取得失敗 - {}", e),
-                (_, _, _, Err(e)) => state.status_message = format!("起動時エラー: 紐付けマスター取得失敗 - {}", e),
+            // Fetch each data independently to avoid one failure blocking everything
+            state.templates = client.get_templates().unwrap_or_else(|e| {
+                state.status_message = format!("エラー: テンプレート取得失敗 - {}", e);
+                Vec::new()
+            });
+            state.recipients_master = client.get_recipients().unwrap_or_else(|e| {
+                state.status_message = format!("エラー: 宛先取得失敗 - {}", e);
+                Vec::new()
+            });
+            state.signatures = client.get_signatures().unwrap_or_else(|e| {
+                state.status_message = format!("エラー: 署名取得失敗 - {}", e);
+                Vec::new()
+            });
+            state.linkings_master = client.get_linkings().unwrap_or_else(|e| {
+                state.status_message = format!("エラー: 紐付け取得失敗 - {}", e);
+                Vec::new()
+            });
+            state.history = client.get_history().unwrap_or_else(|e| {
+                state.status_message = format!("警告: 履歴なしまたは取得失敗 - {}", e);
+                Vec::new()
+            });
+
+            if state.status_message.starts_with("マスターデータ") {
+                state.status_message = "起動完了".to_string();
+            }
+
+            // Select default signature if not already set
+            if state.selected_signature_index.is_none() && !state.signatures.is_empty() {
+                state.selected_signature_index = Some(0);
             }
             
             state.is_loading = false;
@@ -112,6 +119,7 @@ impl eframe::App for MailApp {
                 ui.heading("メニュー");
                 ui.separator();
                 ui.selectable_value(&mut state.tab, Tab::Main, "✉ メール作成");
+                ui.selectable_value(&mut state.tab, Tab::History, "📜 送信履歴");
                 ui.selectable_value(&mut state.tab, Tab::Settings, "⚙ 設定");
             });
         });
@@ -119,6 +127,7 @@ impl eframe::App for MailApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             match state.tab {
                 Tab::Main => ui::mail_panel::show(ui, &mut state),
+                Tab::History => ui::history_panel::show(ui, &mut state),
                 Tab::Settings => ui::settings_panel::show(ui, &mut state),
             }
         });

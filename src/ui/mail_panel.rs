@@ -1,9 +1,72 @@
 use eframe::egui;
-use crate::models::{AppState, RecipientInfo};
+use crate::models::AppState;
 use crate::api::GasClient;
 use crate::utils::apply_variables;
+use crate::file_utils::{extract_company_name_from_path, encode_file_to_base64, get_mime_type};
+
+pub fn select_recipient(state: &mut AppState, index: usize) {
+    state.selected_recipient_index = Some(index);
+    if let Some(rec) = state.recipients_master.get(index) {
+        let active_idx = state.active_recipient_index;
+        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
+            draft_rec.email = rec.email.clone();
+            
+            // Auto-apply linked template if exists
+            let linked_template = state.linkings_master.iter()
+                .find(|link| link.recipient_id == rec.id)
+                .and_then(|link| state.templates.iter()
+                    .position(|t| t.id == link.template_id));
+            
+            if let Some(template_idx) = linked_template {
+                state.selected_template_index = Some(template_idx);
+                if let Some(template) = state.templates.get(template_idx) {
+                    state.mail_draft.subject = template.subject.clone();
+                    draft_rec.body = apply_variables(template.body.clone(), rec);
+                }
+            } else if let Some(t_idx) = state.selected_template_index {
+                if let Some(template) = state.templates.get(t_idx) {
+                    draft_rec.body = apply_variables(template.body.clone(), rec);
+                }
+            }
+        }
+    }
+}
 
 pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
+    // Handle dropped files
+    let dropped_files = ui.input(|i| {
+        i.raw.dropped_files.iter()
+            .filter_map(|f| f.path.clone())
+            .collect::<Vec<_>>()
+    });
+
+    for path in dropped_files {
+        let path_str = path.to_string_lossy();
+        
+        // Add to attachments
+        if let (Ok(data), name) = (encode_file_to_base64(&path_str), path.file_name()) {
+            let file_name = name.map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
+            let mime_type = get_mime_type(&file_name);
+            
+            state.mail_draft.attachments.push(crate::models::Attachment {
+                file_path: path_str.to_string(),
+                file_name,
+                enabled: true,
+                data,
+                mime_type,
+            });
+
+            // Auto-select recipient based on filename
+            if let Some(company) = extract_company_name_from_path(&path_str) {
+                if let Some(pos) = state.recipients_master.iter()
+                    .position(|r| r.company.contains(&company) || company.contains(&r.company)) 
+                {
+                    select_recipient(state, pos);
+                }
+            }
+        }
+    }
+
     ui.columns(3, |columns| {
         // Column 1: Selection (Templates & Recipients)
         columns[0].vertical(|ui| {
@@ -12,37 +75,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             
             ui.label("宛先リスト:");
             egui::ScrollArea::vertical().id_salt("recipients_scroll").max_height(200.0).show(ui, |ui| {
-                let mut sel_rec_idx = state.selected_recipient_index;
+                let mut clicked_idx = None;
                 for (i, rec) in state.recipients_master.iter().enumerate() {
                     let label = format!("{} ({})", rec.name, rec.company);
-                    if ui.selectable_label(sel_rec_idx == Some(i), label).clicked() {
-                        sel_rec_idx = Some(i);
-                        
-                        let active_idx = state.active_recipient_index;
-                        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
-                            draft_rec.email = rec.email.clone();
-                            
-                            // Auto-apply linked template if exists
-                            let linked_template = state.linkings_master.iter()
-                                .find(|link| link.recipient_id == rec.id)
-                                .and_then(|link| state.templates.iter()
-                                    .position(|t| t.id == link.template_id));
-                            
-                            if let Some(template_idx) = linked_template {
-                                state.selected_template_index = Some(template_idx);
-                                if let Some(template) = state.templates.get(template_idx) {
-                                    state.mail_draft.subject = template.subject.clone();
-                                    draft_rec.body = apply_variables(template.body.clone(), rec);
-                                }
-                            } else if let Some(t_idx) = state.selected_template_index {
-                                if let Some(template) = state.templates.get(t_idx) {
-                                    draft_rec.body = apply_variables(template.body.clone(), rec);
-                                }
-                            }
-                        }
+                    if ui.selectable_label(state.selected_recipient_index == Some(i), label).clicked() {
+                        clicked_idx = Some(i);
                     }
                 }
-                state.selected_recipient_index = sel_rec_idx;
+                if let Some(i) = clicked_idx {
+                    select_recipient(state, i);
+                }
             });
 
             ui.separator();
@@ -166,6 +208,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.strong(&rec.email);
                     });
                 }
+            }
+            
+            ui.add_space(10.0);
+            ui.label("📎 添付ファイル:");
+            egui::ScrollArea::vertical().id_salt("attachments_scroll").max_height(100.0).show(ui, |ui| {
+                let mut to_remove = None;
+                for (i, att) in state.mail_draft.attachments.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut att.enabled, "");
+                        ui.label(&att.file_name);
+                        if ui.button("🗑").clicked() {
+                            to_remove = Some(i);
+                        }
+                    });
+                }
+                if let Some(i) = to_remove {
+                    state.mail_draft.attachments.remove(i);
+                }
+            });
+
+            if state.mail_draft.attachments.is_empty() {
+                ui.weak("ファイルをドロップして追加");
             }
             
             ui.add_space(10.0);
