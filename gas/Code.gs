@@ -138,6 +138,12 @@ function doPost(e) {
     return sendBatchMail(payload);
   } else if (action === 'saveSettings') {
     return saveSettings(payload);
+  } else if (action === 'saveTemplate') {
+    return saveTemplate(payload);
+  } else if (action === 'deleteTemplate') {
+    return deleteTemplate(payload);
+  } else if (action === 'saveRecipient') {
+    return saveRecipient(payload);
   }
 
   return ContentService.createTextOutput(JSON.stringify({ error: 'Unknown action' }))
@@ -348,4 +354,97 @@ function getLogs() {
 
   return ContentService.createTextOutput(JSON.stringify({ logs: logs }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function saveTemplate(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('テンプレート');
+    if (!sheet) {
+      sheet = ss.insertSheet('テンプレート');
+      sheet.appendRow(['Name', 'Subject', 'Body']);
+    }
+
+    const template = payload.template;
+    const data = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    // Search by Name (unique identifier for now)
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === template.name) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex > 0) {
+      sheet.getRange(rowIndex, 1, 1, 3).setValues([[template.name, template.subject, template.body]]);
+    } else {
+      sheet.appendRow([template.name, template.subject, template.body]);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function deleteTemplate(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('テンプレート');
+    if (!sheet) throw "Sheet not found";
+
+    const name = payload.name;
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][0] === name) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function saveRecipient(payload) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('宛先リスト');
+    if (!sheet) {
+      sheet = ss.insertSheet('宛先リスト');
+      sheet.appendRow(['ID', '会社名', '氏名', 'メールアドレス']);
+    }
+
+    const rec = payload.recipient;
+    const data = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    // Search by ID or Email
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === rec.id || (rec.email && data[i][3] === rec.email)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (rowIndex > 0) {
+      sheet.getRange(rowIndex, 1, 1, 4).setValues([[rec.id, rec.company, rec.name, rec.email]]);
+    } else {
+      sheet.appendRow([rec.id || (data.length).toString(), rec.company, rec.name, rec.email]);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }

@@ -1,9 +1,7 @@
 use eframe::egui;
 use crate::models::{AppState, Tab};
-use crate::api::GasClient;
 use crate::ui;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 pub struct MailApp {
     state: Arc<Mutex<AppState>>,
