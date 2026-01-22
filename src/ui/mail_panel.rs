@@ -46,22 +46,40 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
 
         if extension == "csv" {
             // CSV Import Logic
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let client = GasClient::new(state.gas_url.clone());
-                for line in content.lines().skip(1) { // Skip header
-                    let parts: Vec<&str> = line.split(',').collect();
-                    if parts.len() >= 3 {
-                        let rec = crate::models::RecipientData {
-                            id: (state.recipients_master.len() + 1).to_string(),
-                            company: parts[0].trim().to_string(),
-                            name: parts[1].trim().to_string(),
-                            email: parts[2].trim().to_string(),
-                        };
-                        let _ = client.save_recipient(&rec);
-                        state.recipients_master.push(rec);
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    let client = GasClient::new(state.gas_url.clone());
+                    let mut imported_count = 0;
+                    let mut failed_count = 0;
+
+                    for line in content.lines().skip(1) { // Skip header
+                        let parts: Vec<&str> = line.split(',').collect();
+                        if parts.len() >= 3 {
+                            let rec = crate::models::RecipientData {
+                                id: (state.recipients_master.len() + 1).to_string(),
+                                company: parts[0].trim().to_string(),
+                                name: parts[1].trim().to_string(),
+                                email: parts[2].trim().to_string(),
+                            };
+                            match client.save_recipient(&rec) {
+                                Ok(_) => {
+                                    state.recipients_master.push(rec);
+                                    imported_count += 1;
+                                }
+                                Err(_) => failed_count += 1,
+                            }
+                        }
+                    }
+
+                    if failed_count == 0 {
+                        state.status_message = format!("✅ CSVから{}件の宛先をインポートしました", imported_count);
+                    } else {
+                        state.status_message = format!("⚠ CSVインポート: {}件成功, {}件失敗", imported_count, failed_count);
                     }
                 }
-                state.status_message = format!("CSVから宛先をインポートしました: {}", path_str);
+                Err(e) => {
+                    state.status_message = format!("❌ CSVファイル読み込みエラー: {}", e);
+                }
             }
         } else {
             // Normal attachment logic
@@ -207,8 +225,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         if ui.button("💾 GASに保存").clicked() {
                             let client = GasClient::new(state.gas_url.clone());
                             match client.save_template(template) {
-                                Ok(_) => state.status_message = "テンプレートを保存しました".to_string(),
-                                Err(e) => state.status_message = format!("保存失敗: {}", e),
+                                Ok(_) => state.status_message = "✅ テンプレートを保存しました".to_string(),
+                                Err(e) => state.status_message = format!("❌ {}", e),
                             }
                         }
                     }
@@ -231,8 +249,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         if ui.button("💾 GASに保存").clicked() {
                             let client = GasClient::new(state.gas_url.clone());
                             match client.save_recipient(rec) {
-                                Ok(_) => state.status_message = "宛先情報を保存しました".to_string(),
-                                Err(e) => state.status_message = format!("保存失敗: {}", e),
+                                Ok(_) => state.status_message = "✅ 宛先情報を保存しました".to_string(),
+                                Err(e) => state.status_message = format!("❌ {}", e),
                             }
                         }
                     }
@@ -367,8 +385,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         .collect();
 
                      match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
-                         Ok(_) => state.status_message = "すべて送信完了しました！".to_string(),
-                         Err(e) => state.status_message = format!("送信エラー: {}", e),
+                         Ok(_) => state.status_message = "✅ すべて送信完了しました！".to_string(),
+                         Err(e) => state.status_message = format!("❌ {}", e),
                      }
                 }
             }

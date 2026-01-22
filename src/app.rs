@@ -63,35 +63,39 @@ impl MailApp {
                     }
                 }
             }
-            
+
             // Auto-fetch master data on startup
             state.status_message = "マスターデータを取得中...".to_string();
             state.is_loading = true;
-            
-            // Fetch each data independently to avoid one failure blocking everything
-            state.templates = client.get_templates().unwrap_or_else(|e| {
-                state.status_message = format!("エラー: テンプレート取得失敗 - {}", e);
-                Vec::new()
-            });
-            state.recipients_master = client.get_recipients().unwrap_or_else(|e| {
-                state.status_message = format!("エラー: 宛先取得失敗 - {}", e);
-                Vec::new()
-            });
-            state.signatures = client.get_signatures().unwrap_or_else(|e| {
-                state.status_message = format!("エラー: 署名取得失敗 - {}", e);
-                Vec::new()
-            });
-            state.linkings_master = client.get_linkings().unwrap_or_else(|e| {
-                state.status_message = format!("エラー: 紐付け取得失敗 - {}", e);
-                Vec::new()
-            });
-            state.history = client.get_history().unwrap_or_else(|e| {
-                state.status_message = format!("警告: 履歴なしまたは取得失敗 - {}", e);
-                Vec::new()
-            });
 
-            if state.status_message.starts_with("マスターデータ") {
+            let mut errors: Vec<String> = Vec::new();
+
+            // Fetch each data independently to avoid one failure blocking everything
+            match client.get_templates() {
+                Ok(templates) => state.templates = templates,
+                Err(e) => errors.push(format!("テンプレート: {}", e)),
+            }
+            match client.get_recipients() {
+                Ok(recipients) => state.recipients_master = recipients,
+                Err(e) => errors.push(format!("宛先: {}", e)),
+            }
+            match client.get_signatures() {
+                Ok(signatures) => state.signatures = signatures,
+                Err(e) => errors.push(format!("署名: {}", e)),
+            }
+            match client.get_linkings() {
+                Ok(linkings) => state.linkings_master = linkings,
+                Err(e) => errors.push(format!("紐付け: {}", e)),
+            }
+            match client.get_history() {
+                Ok(history) => state.history = history,
+                Err(_) => {} // 履歴がない場合はエラーとしない
+            }
+
+            if errors.is_empty() {
                 state.status_message = "起動完了".to_string();
+            } else {
+                state.status_message = format!("⚠ 一部データ取得失敗: {}", errors.join(", "));
             }
 
             // Select default signature if not already set

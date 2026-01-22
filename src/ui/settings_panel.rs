@@ -11,12 +11,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
         ui.text_edit_singleline(&mut state.gas_url);
         
         if ui.button("接続テスト").clicked() {
-             let client = GasClient::new(state.gas_url.clone());
-             state.status_message = "接続確認中...".to_string();
-             match client.get_templates() {
-                 Ok(_) => state.status_message = "接続成功！".to_string(),
-                 Err(e) => state.status_message = format!("接続失敗: {}", e),
-             }
+            let client = GasClient::new(state.gas_url.clone());
+            match client.get_templates() {
+                Ok(_) => state.status_message = "✅ 接続成功！".to_string(),
+                Err(e) => state.status_message = format!("❌ {}", e),
+            }
         }
     });
 
