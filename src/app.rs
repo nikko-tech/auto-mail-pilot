@@ -52,17 +52,17 @@ impl MailApp {
         // Set up custom visual styling for better contrast
         let mut style = (*cc.egui_ctx.style()).clone();
 
-        // Make text edit fields more visible with light green tint
-        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(30, 45, 35);
-        style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 100, 70));
-        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(35, 55, 42);
-        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 130, 90));
-        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(40, 65, 50);
-        style.visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 180, 120));
+        // Make text edit fields more visible with brighter green tint
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(45, 75, 55);
+        style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 130, 90));
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(55, 90, 65);
+        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 160, 110));
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(60, 100, 72);
+        style.visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(120, 200, 140));
 
         // Make selection more visible with green accent
-        style.visuals.selection.bg_fill = egui::Color32::from_rgb(50, 90, 60);
-        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 140, 90));
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(60, 110, 75);
+        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 170, 115));
 
         // Extreme background (used for section panels)
         style.visuals.extreme_bg_color = egui::Color32::from_gray(25);
