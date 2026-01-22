@@ -144,218 +144,332 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
     }
 
     // ========== TOP SECTION: Recipients & Templates (dropdowns) ==========
-    ui.group(|ui| {
-        ui.horizontal(|ui| {
-            // --- Recipients dropdown ---
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("宛先:");
-                    ui.text_edit_singleline(&mut state.recipient_search);
-                    if ui.button("➕").on_hover_text("新規宛先").clicked() {
-                        let new_rec = crate::models::RecipientData {
-                            id: (state.recipients_master.len() + 1).to_string(),
-                            company: "新規会社".to_string(),
-                            name: "氏名".to_string(),
-                            email: "".to_string(),
-                        };
-                        state.recipients_master.push(new_rec);
-                    }
-                });
-
-                let search_lower = state.recipient_search.to_lowercase();
-                let filtered_recipients: Vec<(usize, String)> = state.recipients_master.iter()
-                    .enumerate()
-                    .filter(|(_, r)| {
-                        search_lower.is_empty()
-                        || r.name.to_lowercase().contains(&search_lower)
-                        || r.company.to_lowercase().contains(&search_lower)
-                        || r.email.to_lowercase().contains(&search_lower)
-                    })
-                    .map(|(i, r)| (i, format!("{} ({})", r.name, r.company)))
-                    .collect();
-
-                egui::ScrollArea::vertical().id_salt("recipients_dropdown").max_height(120.0).show(ui, |ui| {
-                    let mut clicked_idx = None;
-                    for (i, label) in &filtered_recipients {
-                        if ui.selectable_label(state.selected_recipient_index == Some(*i), label).clicked() {
-                            clicked_idx = Some(*i);
+    ui.horizontal(|ui| {
+        // --- Recipients dropdown ---
+        egui::Frame::none()
+            .fill(ui.visuals().extreme_bg_color)
+            .inner_margin(8.0)
+            .outer_margin(2.0)
+            .rounding(4.0)
+            .show(ui, |ui| {
+                ui.set_min_width(220.0);
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("👤 宛先");
+                        ui.add_space(8.0);
+                        ui.add(egui::TextEdit::singleline(&mut state.recipient_search)
+                            .hint_text("検索...")
+                            .desired_width(100.0));
+                        if ui.small_button("➕").on_hover_text("新規宛先").clicked() {
+                            let new_rec = crate::models::RecipientData {
+                                id: (state.recipients_master.len() + 1).to_string(),
+                                company: "新規会社".to_string(),
+                                name: "氏名".to_string(),
+                                email: "".to_string(),
+                            };
+                            state.recipients_master.push(new_rec);
                         }
-                    }
-                    if let Some(i) = clicked_idx {
-                        select_recipient(state, i);
-                    }
+                    });
+
+                    ui.add_space(4.0);
+
+                    let search_lower = state.recipient_search.to_lowercase();
+                    let filtered_recipients: Vec<(usize, String)> = state.recipients_master.iter()
+                        .enumerate()
+                        .filter(|(_, r)| {
+                            search_lower.is_empty()
+                            || r.name.to_lowercase().contains(&search_lower)
+                            || r.company.to_lowercase().contains(&search_lower)
+                            || r.email.to_lowercase().contains(&search_lower)
+                        })
+                        .map(|(i, r)| {
+                            let display = if r.company.is_empty() {
+                                r.name.clone()
+                            } else {
+                                format!("{} - {}", r.company, r.name)
+                            };
+                            (i, display)
+                        })
+                        .collect();
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("recipients_dropdown")
+                        .max_height(100.0)
+                        .show(ui, |ui| {
+                            let mut clicked_idx = None;
+                            for (i, label) in &filtered_recipients {
+                                let is_selected = state.selected_recipient_index == Some(*i);
+                                let response = ui.selectable_label(is_selected, label);
+                                if response.clicked() {
+                                    clicked_idx = Some(*i);
+                                }
+                            }
+                            if let Some(i) = clicked_idx {
+                                select_recipient(state, i);
+                            }
+                            if filtered_recipients.is_empty() {
+                                ui.weak("宛先なし");
+                            }
+                        });
                 });
             });
 
-            ui.separator();
+        ui.add_space(8.0);
 
-            // --- Templates dropdown ---
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("テンプレート:");
-                    ui.text_edit_singleline(&mut state.template_search);
-                    if ui.button("➕").on_hover_text("新規テンプレート").clicked() {
-                        let new_temp = crate::models::Template {
-                            id: (state.templates.len() + 1).to_string(),
-                            name: "新しいテンプレート".to_string(),
-                            subject: "".to_string(),
-                            body: "".to_string(),
-                        };
-                        state.templates.push(new_temp);
-                    }
-                });
-
-                let search_lower = state.template_search.to_lowercase();
-                let filtered_templates: Vec<(usize, String)> = state.templates.iter()
-                    .enumerate()
-                    .filter(|(_, t)| {
-                        search_lower.is_empty()
-                        || t.name.to_lowercase().contains(&search_lower)
-                        || t.subject.to_lowercase().contains(&search_lower)
-                    })
-                    .map(|(i, t)| (i, t.name.clone()))
-                    .collect();
-
-                egui::ScrollArea::vertical().id_salt("templates_dropdown").max_height(120.0).show(ui, |ui| {
-                    let mut apply_idx = None;
-                    for (i, label) in &filtered_templates {
-                        if ui.selectable_label(state.selected_template_index == Some(*i), label).clicked() {
-                            state.selected_template_index = Some(*i);
-                            apply_idx = Some(*i);
+        // --- Templates dropdown ---
+        egui::Frame::none()
+            .fill(ui.visuals().extreme_bg_color)
+            .inner_margin(8.0)
+            .outer_margin(2.0)
+            .rounding(4.0)
+            .show(ui, |ui| {
+                ui.set_min_width(220.0);
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("📝 テンプレート");
+                        ui.add_space(8.0);
+                        ui.add(egui::TextEdit::singleline(&mut state.template_search)
+                            .hint_text("検索...")
+                            .desired_width(80.0));
+                        if ui.small_button("➕").on_hover_text("新規テンプレート").clicked() {
+                            let new_temp = crate::models::Template {
+                                id: (state.templates.len() + 1).to_string(),
+                                name: "新しいテンプレート".to_string(),
+                                subject: "".to_string(),
+                                body: "".to_string(),
+                            };
+                            state.templates.push(new_temp);
                         }
-                    }
-                    if let Some(i) = apply_idx {
-                        apply_template(state, i);
-                    }
+                    });
+
+                    ui.add_space(4.0);
+
+                    let search_lower = state.template_search.to_lowercase();
+                    let filtered_templates: Vec<(usize, String)> = state.templates.iter()
+                        .enumerate()
+                        .filter(|(_, t)| {
+                            search_lower.is_empty()
+                            || t.name.to_lowercase().contains(&search_lower)
+                            || t.subject.to_lowercase().contains(&search_lower)
+                        })
+                        .map(|(i, t)| (i, t.name.clone()))
+                        .collect();
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("templates_dropdown")
+                        .max_height(100.0)
+                        .show(ui, |ui| {
+                            let mut apply_idx = None;
+                            for (i, label) in &filtered_templates {
+                                let is_selected = state.selected_template_index == Some(*i);
+                                if ui.selectable_label(is_selected, label).clicked() {
+                                    state.selected_template_index = Some(*i);
+                                    apply_idx = Some(*i);
+                                }
+                            }
+                            if let Some(i) = apply_idx {
+                                apply_template(state, i);
+                            }
+                            if filtered_templates.is_empty() {
+                                ui.weak("テンプレートなし");
+                            }
+                        });
                 });
             });
 
-            ui.separator();
+        ui.add_space(8.0);
 
-            // --- Signature selector ---
-            ui.vertical(|ui| {
-                ui.label("署名:");
-                egui::ScrollArea::vertical().id_salt("signatures_dropdown").max_height(120.0).show(ui, |ui| {
-                    let mut sel_sig_idx = state.selected_signature_index;
-                    for (i, sig) in state.signatures.iter().enumerate() {
-                        if ui.selectable_label(sel_sig_idx == Some(i), &sig.name).clicked() {
-                            sel_sig_idx = Some(i);
-                            let client = GasClient::new(state.gas_url.clone());
-                            let mut settings = std::collections::HashMap::new();
-                            settings.insert("selected_signature_index".to_string(), i.to_string());
-                            let _ = client.save_settings(&settings);
-                        }
-                    }
-                    state.selected_signature_index = sel_sig_idx;
+        // --- Signature selector ---
+        egui::Frame::none()
+            .fill(ui.visuals().extreme_bg_color)
+            .inner_margin(8.0)
+            .outer_margin(2.0)
+            .rounding(4.0)
+            .show(ui, |ui| {
+                ui.set_min_width(150.0);
+                ui.vertical(|ui| {
+                    ui.strong("✍ 署名");
+                    ui.add_space(4.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("signatures_dropdown")
+                        .max_height(100.0)
+                        .show(ui, |ui| {
+                            let mut sel_sig_idx = state.selected_signature_index;
+                            for (i, sig) in state.signatures.iter().enumerate() {
+                                if ui.selectable_label(sel_sig_idx == Some(i), &sig.name).clicked() {
+                                    sel_sig_idx = Some(i);
+                                    let client = GasClient::new(state.gas_url.clone());
+                                    let mut settings = std::collections::HashMap::new();
+                                    settings.insert("selected_signature_index".to_string(), i.to_string());
+                                    let _ = client.save_settings(&settings);
+                                }
+                            }
+                            state.selected_signature_index = sel_sig_idx;
+                            if state.signatures.is_empty() {
+                                ui.weak("署名なし");
+                            }
+                        });
                 });
             });
-        });
     });
 
-    ui.separator();
+    ui.add_space(8.0);
 
     // ========== MIDDLE SECTION: Email Editor ==========
-    ui.group(|ui| {
-        // Recipient Tabs
-        ui.horizontal(|ui| {
-            for i in 0..3 {
-                let has_email = state.mail_draft.recipients.get(i)
-                    .map(|r| !r.email.is_empty())
-                    .unwrap_or(false);
-                let label = if has_email {
-                    format!("宛先{} ●", i + 1)
-                } else {
-                    format!("宛先{}", i + 1)
-                };
-                if ui.selectable_label(state.active_recipient_index == i, label).clicked() {
-                    state.active_recipient_index = i;
+    egui::Frame::none()
+        .fill(ui.visuals().window_fill)
+        .stroke(ui.visuals().widgets.noninteractive.bg_stroke)
+        .inner_margin(12.0)
+        .rounding(6.0)
+        .show(ui, |ui| {
+            // Section header
+            ui.horizontal(|ui| {
+                ui.strong("📧 メール編集");
+                ui.add_space(16.0);
+
+                // Recipient Tabs
+                for i in 0..3 {
+                    let has_email = state.mail_draft.recipients.get(i)
+                        .map(|r| !r.email.is_empty())
+                        .unwrap_or(false);
+                    let is_active = state.active_recipient_index == i;
+
+                    let label = if has_email {
+                        format!("宛先{} ✓", i + 1)
+                    } else {
+                        format!("宛先{}", i + 1)
+                    };
+
+                    let button = egui::Button::new(label)
+                        .selected(is_active);
+
+                    if ui.add(button).clicked() {
+                        state.active_recipient_index = i;
+                    }
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
+
+            let active_idx = state.active_recipient_index;
+
+            // Get company name for display
+            let company_display = state.selected_recipient_index
+                .and_then(|idx| state.recipients_master.get(idx))
+                .map(|r| {
+                    if r.company.is_empty() {
+                        r.name.clone()
+                    } else {
+                        format!("{} / {}", r.company, r.name)
+                    }
+                })
+                .unwrap_or_default();
+
+            if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
+                egui::Grid::new("email_fields")
+                    .num_columns(2)
+                    .spacing([8.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label("To:");
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(&mut recipient.email)
+                                .hint_text("メールアドレス")
+                                .desired_width(300.0));
+                            if !company_display.is_empty() {
+                                ui.label(egui::RichText::new(format!("← {}", company_display))
+                                    .color(ui.visuals().hyperlink_color));
+                            }
+                        });
+                        ui.end_row();
+
+                        ui.label("件名:");
+                        ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject)
+                            .hint_text("件名を入力")
+                            .desired_width(f32::INFINITY));
+                        ui.end_row();
+                    });
+
+                ui.add_space(8.0);
+                ui.label("本文:");
+                egui::ScrollArea::vertical()
+                    .id_salt("body_editor")
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        ui.add(egui::TextEdit::multiline(&mut recipient.body)
+                            .hint_text("本文を入力...")
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(10));
+                    });
+
+                // Signature preview
+                if let Some(sig_idx) = state.selected_signature_index {
+                    if let Some(sig) = state.signatures.get(sig_idx) {
+                        ui.add_space(4.0);
+                        ui.collapsing(format!("✍ 署名: {}", sig.name), |ui| {
+                            egui::Frame::none()
+                                .fill(ui.visuals().extreme_bg_color)
+                                .inner_margin(8.0)
+                                .rounding(4.0)
+                                .show(ui, |ui| {
+                                    ui.label(&sig.content);
+                                });
+                        });
+                    }
                 }
             }
         });
 
-        ui.separator();
-
-        let active_idx = state.active_recipient_index;
-
-        // Get company name for display
-        let company_display = state.selected_recipient_index
-            .and_then(|idx| state.recipients_master.get(idx))
-            .map(|r| {
-                if r.company.is_empty() {
-                    r.name.clone()
-                } else {
-                    format!("{} / {}", r.company, r.name)
-                }
-            })
-            .unwrap_or_default();
-
-        if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
-            ui.horizontal(|ui| {
-                ui.label("宛先メール:");
-                ui.add(egui::TextEdit::singleline(&mut recipient.email).desired_width(300.0));
-                if !company_display.is_empty() {
-                    ui.label(format!("【{}】", company_display));
-                }
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("件名:");
-                ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject).desired_width(400.0));
-            });
-
-            ui.add_space(4.0);
-            ui.label("本文:");
-            egui::ScrollArea::vertical().id_salt("body_editor").max_height(250.0).show(ui, |ui| {
-                ui.add(egui::TextEdit::multiline(&mut recipient.body)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(12));
-            });
-
-            // Signature preview
-            if let Some(sig_idx) = state.selected_signature_index {
-                if let Some(sig) = state.signatures.get(sig_idx) {
-                    ui.separator();
-                    ui.collapsing("署名プレビュー", |ui| {
-                        ui.label(&sig.content);
-                    });
-                }
-            }
-        }
-    });
-
-    ui.separator();
+    ui.add_space(8.0);
 
     // ========== BOTTOM SECTION: Attachments & Send ==========
     ui.horizontal(|ui| {
-        // Attachments
-        ui.group(|ui| {
-            ui.label("📎 添付ファイル:");
-            egui::ScrollArea::horizontal().id_salt("attachments_list").show(ui, |ui| {
+        // Attachments section
+        egui::Frame::none()
+            .fill(ui.visuals().extreme_bg_color)
+            .inner_margin(8.0)
+            .rounding(4.0)
+            .show(ui, |ui| {
+                ui.set_min_width(400.0);
                 ui.horizontal(|ui| {
-                    let mut to_remove = None;
-                    for (i, att) in state.mail_draft.attachments.iter_mut().enumerate() {
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut att.enabled, "");
-                                ui.label(&att.file_name);
-                                if ui.small_button("✕").clicked() {
-                                    to_remove = Some(i);
-                                }
+                    ui.strong("📎 添付ファイル");
+                    ui.add_space(8.0);
+
+                    if state.mail_draft.attachments.is_empty() {
+                        ui.weak("ファイルをドロップして追加");
+                    } else {
+                        egui::ScrollArea::horizontal()
+                            .id_salt("attachments_list")
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let mut to_remove = None;
+                                    for (i, att) in state.mail_draft.attachments.iter_mut().enumerate() {
+                                        egui::Frame::none()
+                                            .fill(ui.visuals().widgets.inactive.bg_fill)
+                                            .inner_margin(4.0)
+                                            .rounding(3.0)
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.checkbox(&mut att.enabled, "");
+                                                    ui.label(&att.file_name);
+                                                    if ui.small_button("✕").on_hover_text("削除").clicked() {
+                                                        to_remove = Some(i);
+                                                    }
+                                                });
+                                            });
+                                    }
+                                    if let Some(i) = to_remove {
+                                        state.mail_draft.attachments.remove(i);
+                                    }
+                                });
                             });
-                        });
-                    }
-                    if let Some(i) = to_remove {
-                        state.mail_draft.attachments.remove(i);
                     }
                 });
             });
-            if state.mail_draft.attachments.is_empty() {
-                ui.weak("ファイルをドロップして追加");
-            }
-        });
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Send button
+            // Send button - larger and more prominent
             let valid_count = state.mail_draft.recipients.iter()
                 .filter(|r| !r.email.is_empty())
                 .count();
@@ -366,7 +480,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 "📧 送信".to_string()
             };
 
-            if ui.add_enabled(valid_count > 0, egui::Button::new(send_label)).clicked() {
+            let button = egui::Button::new(egui::RichText::new(send_label).size(16.0))
+                .min_size(egui::vec2(100.0, 36.0));
+
+            if ui.add_enabled(valid_count > 0, button).clicked() {
                 let client = GasClient::new(state.gas_url.clone());
                 state.status_message = "送信中...".to_string();
 

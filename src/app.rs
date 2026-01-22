@@ -120,18 +120,52 @@ impl eframe::App for MailApp {
 
         // Top tab bar (system tabs style)
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut state.tab, Tab::Main, "✉ メール作成");
-                ui.separator();
-                ui.selectable_value(&mut state.tab, Tab::History, "📜 送信履歴");
-                ui.separator();
-                ui.selectable_value(&mut state.tab, Tab::Settings, "⚙ 設定");
+                ui.add_space(8.0);
+
+                let tab_button = |ui: &mut egui::Ui, current: &mut Tab, target: Tab, label: &str| {
+                    let is_selected = *current == target;
+                    let text = if is_selected {
+                        egui::RichText::new(label).strong()
+                    } else {
+                        egui::RichText::new(label)
+                    };
+                    if ui.selectable_label(is_selected, text).clicked() {
+                        *current = target;
+                    }
+                };
+
+                tab_button(ui, &mut state.tab, Tab::Main, "✉ メール作成");
+                ui.add_space(16.0);
+                tab_button(ui, &mut state.tab, Tab::History, "📜 送信履歴");
+                ui.add_space(16.0);
+                tab_button(ui, &mut state.tab, Tab::Settings, "⚙ 設定");
             });
+            ui.add_space(4.0);
         });
 
-        // Status bar at bottom
+        // Status bar at bottom with color coding
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            ui.label(&state.status_message);
+            let msg = &state.status_message;
+
+            // Determine status type and color
+            let (icon, color) = if msg.contains("エラー") || msg.contains("失敗") {
+                ("❌", egui::Color32::from_rgb(220, 80, 80))
+            } else if msg.contains("成功") || msg.contains("完了") {
+                ("✅", egui::Color32::from_rgb(80, 180, 80))
+            } else if msg.contains("中...") || msg.contains("接続中") {
+                ("⏳", egui::Color32::from_rgb(180, 180, 80))
+            } else if msg.contains("自動選択") || msg.contains("適用") {
+                ("✨", egui::Color32::from_rgb(100, 150, 220))
+            } else {
+                ("ℹ", ui.visuals().text_color())
+            };
+
+            ui.horizontal(|ui| {
+                ui.label(icon);
+                ui.label(egui::RichText::new(msg).color(color));
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
