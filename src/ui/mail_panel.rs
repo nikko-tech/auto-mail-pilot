@@ -79,18 +79,31 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
 
                 // Auto-select recipient based on filename
                 if let Some(company) = extract_company_name_from_path(&path_str) {
-                    // Normalize for matching (remove spaces, convert to lowercase for comparison)
-                    let company_normalized = company.replace(" ", "").replace("　", "").to_lowercase();
+                    // Normalize for matching (remove spaces)
+                    let company_normalized = company.replace(" ", "").replace("　", "");
 
                     if let Some(pos) = state.recipients_master.iter()
                         .position(|r| {
-                            let r_normalized = r.company.replace(" ", "").replace("　", "").to_lowercase();
-                            r_normalized.contains(&company_normalized) || company_normalized.contains(&r_normalized)
+                            // Check both company and name fields for match
+                            let company_norm = r.company.replace(" ", "").replace("　", "");
+                            let name_norm = r.name.replace(" ", "").replace("　", "");
+                            let combined = format!("{}{}", name_norm, company_norm);
+
+                            // Check if company from filename matches any field
+                            company_norm.contains(&company_normalized)
+                                || company_normalized.contains(&company_norm)
+                                || name_norm.contains(&company_normalized)
+                                || combined.contains(&company_normalized)
                         })
                     {
                         select_recipient(state, pos);
-                        let matched_name = &state.recipients_master[pos].company;
-                        state.status_message = format!("ファイル名から宛先を自動選択: {}", matched_name);
+                        let rec = &state.recipients_master[pos];
+                        let display_name = if rec.company.is_empty() {
+                            rec.name.clone()
+                        } else {
+                            format!("{} ({})", rec.name, rec.company)
+                        };
+                        state.status_message = format!("ファイル名から宛先を自動選択: {}", display_name);
                     }
                 }
             }

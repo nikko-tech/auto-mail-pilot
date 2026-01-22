@@ -121,7 +121,7 @@ impl Default for AppState {
             mail_draft: MailDraft::default(),
             history: Vec::new(),
             tab: Tab::Main,
-            gas_url: "https://script.google.com/macros/s/AKfycbwcbs_FEZXbYDNRrvap3LdpCLBrSjnaPhw3EcmNKEwFFKIcikzNhtPKmf4bAjpKid9M/exec".to_string(),
+            gas_url: "https://script.google.com/macros/s/AKfycbwUAgPH2nh3Mn7JYbsRUWadfXHlCPkPKMm1OOqzbFg1mjjDvVS76ZKuM8sNB1NwP2wE/exec".to_string(),
             status_message: "準備完了".to_string(),
             is_loading: false,
         }
