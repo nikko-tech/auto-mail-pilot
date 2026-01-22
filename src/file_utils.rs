@@ -58,16 +58,33 @@ pub fn extract_company_name_from_path(path: &str) -> Option<String> {
     let file_name = std::path::Path::new(path)
         .file_stem()?
         .to_str()?;
-    
+
     // Split by common delimiters and take the first part
     let delimiters = ['_', ' ', '(', '（', '【', '['];
     let first_part = file_name.split(&delimiters[..]).next()?.trim();
-    
+
     if first_part.is_empty() {
         None
     } else {
         Some(first_part.to_string())
     }
+}
+
+/// Extract all parts from filename for template matching.
+/// Returns all segments split by common delimiters.
+/// Example: "日興金属_納品書_2024.pdf" -> ["日興金属", "納品書", "2024"]
+pub fn extract_filename_parts(path: &str) -> Vec<String> {
+    let file_name = match std::path::Path::new(path).file_stem().and_then(|s| s.to_str()) {
+        Some(name) => name,
+        None => return Vec::new(),
+    };
+
+    let delimiters = ['_', ' ', '(', '（', '【', '[', ')', '）', '】', ']', '-', '－'];
+    file_name
+        .split(&delimiters[..])
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 #[cfg(test)]

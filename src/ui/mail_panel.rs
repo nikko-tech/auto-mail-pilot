@@ -2,7 +2,7 @@ use eframe::egui;
 use crate::models::AppState;
 use crate::api::GasClient;
 use crate::utils::apply_variables;
-use crate::file_utils::{extract_company_name_from_path, encode_file_to_base64, get_mime_type};
+use crate::file_utils::{extract_company_name_from_path, extract_filename_parts, encode_file_to_base64, get_mime_type};
 
 pub fn select_recipient(state: &mut AppState, index: usize) {
     state.selected_recipient_index = Some(index);
@@ -120,19 +120,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         state.status_message = format!("ファイル名から宛先を自動選択: {}", display_name);
                     }
 
-                    // Auto-select template from filename
-                    if let Some(template_pos) = state.templates.iter()
-                        .position(|t| {
-                            let template_name_norm = t.name.replace(" ", "").replace("　", "");
-                            template_name_norm.contains(&company_normalized)
-                                || company_normalized.contains(&template_name_norm)
+                }
+
+                // Auto-select template from filename (use all filename parts)
+                let filename_parts = extract_filename_parts(&path_str);
+                if let Some(template_pos) = state.templates.iter()
+                    .position(|t| {
+                        let template_name_norm = t.name.replace(" ", "").replace("　", "");
+                        filename_parts.iter().any(|part| {
+                            let part_norm = part.replace(" ", "").replace("　", "");
+                            template_name_norm.contains(&part_norm)
+                                || part_norm.contains(&template_name_norm)
                         })
-                    {
-                        state.selected_template_index = Some(template_pos);
-                        apply_template(state, template_pos);
-                        let template_name = &state.templates[template_pos].name;
-                        state.status_message = format!("ファイル名からテンプレートを自動選択: {}", template_name);
-                    }
+                    })
+                {
+                    state.selected_template_index = Some(template_pos);
+                    apply_template(state, template_pos);
+                    let template_name = &state.templates[template_pos].name;
+                    state.status_message = format!("ファイル名からテンプレートを自動選択: {}", template_name);
                 }
             }
         }
