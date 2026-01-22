@@ -97,6 +97,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 if let Some(company) = extract_company_name_from_path(&path_str) {
                     let company_normalized = company.replace(" ", "").replace("　", "");
 
+                    // Auto-select recipient from filename
                     if let Some(pos) = state.recipients_master.iter()
                         .position(|r| {
                             let company_norm = r.company.replace(" ", "").replace("　", "");
@@ -117,6 +118,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             format!("{} ({})", rec.name, rec.company)
                         };
                         state.status_message = format!("ファイル名から宛先を自動選択: {}", display_name);
+                    }
+
+                    // Auto-select template from filename
+                    if let Some(template_pos) = state.templates.iter()
+                        .position(|t| {
+                            let template_name_norm = t.name.replace(" ", "").replace("　", "");
+                            template_name_norm.contains(&company_normalized)
+                                || company_normalized.contains(&template_name_norm)
+                        })
+                    {
+                        state.selected_template_index = Some(template_pos);
+                        apply_template(state, template_pos);
+                        let template_name = &state.templates[template_pos].name;
+                        state.status_message = format!("ファイル名からテンプレートを自動選択: {}", template_name);
                     }
                 }
             }
@@ -256,10 +271,26 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
         ui.separator();
 
         let active_idx = state.active_recipient_index;
+
+        // Get company name for display
+        let company_display = state.selected_recipient_index
+            .and_then(|idx| state.recipients_master.get(idx))
+            .map(|r| {
+                if r.company.is_empty() {
+                    r.name.clone()
+                } else {
+                    format!("{} / {}", r.company, r.name)
+                }
+            })
+            .unwrap_or_default();
+
         if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
             ui.horizontal(|ui| {
                 ui.label("宛先メール:");
                 ui.add(egui::TextEdit::singleline(&mut recipient.email).desired_width(300.0));
+                if !company_display.is_empty() {
+                    ui.label(format!("【{}】", company_display));
+                }
             });
 
             ui.horizontal(|ui| {
