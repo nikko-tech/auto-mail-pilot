@@ -54,7 +54,13 @@ impl MailApp {
         // Load settings from GAS on startup
         if !state.gas_url.is_empty() {
             let client = crate::api::GasClient::new(state.gas_url.clone());
-            
+
+            // Auto connection test on startup
+            state.status_message = "GASに接続中...".to_string();
+            state.is_loading = true;
+
+            let mut connection_ok = true;
+
             // Load saved settings
             if let Ok(settings) = client.get_settings() {
                 if let Some(selected_signature_idx) = settings.get("selected_signature_index") {
@@ -63,26 +69,26 @@ impl MailApp {
                     }
                 }
             }
-            
-            // Auto-fetch master data on startup
-            state.status_message = "マスターデータを取得中...".to_string();
-            state.is_loading = true;
-            
+
             // Fetch each data independently to avoid one failure blocking everything
             state.templates = client.get_templates().unwrap_or_else(|e| {
                 state.status_message = format!("エラー: テンプレート取得失敗 - {}", e);
+                connection_ok = false;
                 Vec::new()
             });
             state.recipients_master = client.get_recipients().unwrap_or_else(|e| {
                 state.status_message = format!("エラー: 宛先取得失敗 - {}", e);
+                connection_ok = false;
                 Vec::new()
             });
             state.signatures = client.get_signatures().unwrap_or_else(|e| {
                 state.status_message = format!("エラー: 署名取得失敗 - {}", e);
+                connection_ok = false;
                 Vec::new()
             });
             state.linkings_master = client.get_linkings().unwrap_or_else(|e| {
                 state.status_message = format!("エラー: 紐付け取得失敗 - {}", e);
+                connection_ok = false;
                 Vec::new()
             });
             state.history = client.get_history().unwrap_or_else(|e| {
@@ -90,8 +96,8 @@ impl MailApp {
                 Vec::new()
             });
 
-            if state.status_message.starts_with("マスターデータ") {
-                state.status_message = "起動完了".to_string();
+            if connection_ok {
+                state.status_message = "接続成功！".to_string();
             }
 
             // Select default signature if not already set

@@ -1,11 +1,13 @@
 use crate::models::{Template, RecipientData, Signature, LinkingData};
 use reqwest::blocking::Client;
+use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[derive(Clone)]
 pub struct GasClient {
     client: Client,
+    post_client: Client, // Separate client for POST with no redirect
     url: String,
 }
 
@@ -56,10 +58,45 @@ struct BatchMailItem<'a> {
 
 impl GasClient {
     pub fn new(url: String) -> Self {
+        // POST client with no automatic redirects (GAS redirects lose POST body)
+        let post_client = Client::builder()
+            .redirect(Policy::none())
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
             client: Client::new(),
+            post_client,
             url,
         }
+    }
+
+    // Helper method for POST requests that handles GAS redirects
+    fn post_with_redirect(&self, url: &str, payload: &serde_json::Value) -> Result<String, String> {
+        // First request - will get 302 redirect
+        let response = self.post_client.post(url)
+            .json(payload)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        // Check if it's a redirect
+        if response.status().is_redirection() {
+            if let Some(location) = response.headers().get("location") {
+                let redirect_url = location.to_str()
+                    .map_err(|_| "Invalid redirect URL".to_string())?;
+
+                // Follow redirect with GET (GAS returns result via GET after POST redirect)
+                let final_response = self.client.get(redirect_url)
+                    .send()
+                    .map_err(|e| format!("Redirect request failed: {}", e))?;
+
+                return final_response.text()
+                    .map_err(|e| format!("Failed to read response: {}", e));
+            }
+        }
+
+        response.text()
+            .map_err(|e| format!("Failed to read response: {}", e))
     }
 
     pub fn get_templates(&self) -> Result<Vec<Template>, String> {
@@ -181,12 +218,8 @@ impl GasClient {
             "settings": settings,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-            .map_err(|e| format!("Request failed: {}", e))?;
-
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
@@ -211,12 +244,8 @@ impl GasClient {
             "body": body,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-             .map_err(|e| format!("Request failed: {}", e))?;
-
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
@@ -264,12 +293,8 @@ impl GasClient {
             "emails": emails,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-            .map_err(|e| format!("Request failed: {}", e))?;
-
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
@@ -311,13 +336,8 @@ impl GasClient {
             "template": template,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-            .map_err(|e| format!("Request failed: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
 
-        let text = response.text().map_err(|e| format!("Failed to read response info: {}", e))?;
-        
         // Debug
         eprintln!("GAS save_template Response: {}", text);
 
@@ -344,12 +364,8 @@ impl GasClient {
             "name": name,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-            .map_err(|e| format!("Request failed: {}", e))?;
-
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
@@ -372,12 +388,8 @@ impl GasClient {
             "recipient": recipient,
         });
 
-        let response = self.client.post(&base_url)
-            .json(&payload)
-            .send()
-            .map_err(|e| format!("Request failed: {}", e))?;
-
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = self.post_with_redirect(&base_url, &payload)?;
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
