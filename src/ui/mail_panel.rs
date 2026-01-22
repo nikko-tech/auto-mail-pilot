@@ -165,6 +165,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             .show(ui, |ui| {
                                 ui.add(egui::TextEdit::singleline(&mut state.recipient_search)
                                     .hint_text("🔍 検索...")
+                                    .text_color(egui::Color32::WHITE)
                                     .frame(false)
                                     .desired_width(90.0));
                             });
@@ -244,6 +245,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             .show(ui, |ui| {
                                 ui.add(egui::TextEdit::singleline(&mut state.template_search)
                                     .hint_text("🔍 検索...")
+                                    .text_color(egui::Color32::WHITE)
                                     .frame(false)
                                     .desired_width(70.0));
                             });
@@ -396,6 +398,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         .show(ui, |ui| {
                             ui.add(egui::TextEdit::singleline(&mut recipient.email)
                                 .hint_text("メールアドレス")
+                                .text_color(egui::Color32::WHITE)
                                 .frame(false)
                                 .desired_width(280.0));
                         });
@@ -419,6 +422,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         .show(ui, |ui| {
                             ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject)
                                 .hint_text("件名を入力")
+                                .text_color(egui::Color32::WHITE)
                                 .frame(false)
                                 .desired_width(f32::INFINITY));
                         });
@@ -430,8 +434,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 ui.label(egui::RichText::new("本文:").strong());
                 ui.add_space(4.0);
                 egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(25, 50, 80))
-                    .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(50, 90, 130)))
+                    .fill(egui::Color32::from_rgb(50, 80, 120))
+                    .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
                     .inner_margin(8.0)
                     .rounding(4.0)
                     .show(ui, |ui| {
@@ -441,6 +445,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             .show(ui, |ui| {
                                 ui.add(egui::TextEdit::multiline(&mut recipient.body)
                                     .hint_text("本文を入力...")
+                                    .text_color(egui::Color32::WHITE)
                                     .frame(false)
                                     .desired_width(f32::INFINITY)
                                     .desired_rows(10));
