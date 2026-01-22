@@ -79,10 +79,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
 
                 // Auto-select recipient based on filename
                 if let Some(company) = extract_company_name_from_path(&path_str) {
+                    // Normalize for matching (remove spaces, convert to lowercase for comparison)
+                    let company_normalized = company.replace(" ", "").replace("　", "").to_lowercase();
+
                     if let Some(pos) = state.recipients_master.iter()
-                        .position(|r| r.company.contains(&company) || company.contains(&r.company)) 
+                        .position(|r| {
+                            let r_normalized = r.company.replace(" ", "").replace("　", "").to_lowercase();
+                            r_normalized.contains(&company_normalized) || company_normalized.contains(&r_normalized)
+                        })
                     {
                         select_recipient(state, pos);
+                        let matched_name = &state.recipients_master[pos].company;
+                        state.status_message = format!("ファイル名から宛先を自動選択: {}", matched_name);
                     }
                 }
             }
