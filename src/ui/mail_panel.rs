@@ -169,15 +169,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             egui::ScrollArea::vertical().id_salt("templates_scroll").max_height(200.0).show(ui, |ui| {
                 let mut selected_idx = state.selected_template_index;
                 let mut delete_idx = None;
+                let mut apply_template_idx: Option<usize> = None;
                 for (i, template) in state.templates.iter().enumerate() {
                     ui.horizontal(|ui| {
                         if ui.selectable_label(selected_idx == Some(i), &template.name).clicked() {
                             selected_idx = Some(i);
-                            state.mail_draft.subject = template.subject.clone();
-                            
-                            // Apply template to ALL recipients who have data
-                            // (We need to handle this via a command or deferred update due to borrowing)
-                            // For now just set state.selected_template_index and handle it below columns
+                            apply_template_idx = Some(i);
                         }
                         if ui.button("🗑").clicked() {
                             delete_idx = Some(i);
@@ -185,6 +182,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     });
                 }
                 state.selected_template_index = selected_idx;
+
+                // Apply template when selected (auto-apply on click)
+                if let Some(t_idx) = apply_template_idx {
+                    if let Some(template) = state.templates.get(t_idx) {
+                        state.mail_draft.subject = template.subject.clone();
+                        let active_idx = state.active_recipient_index;
+
+                        // Get recipient data for variable substitution
+                        let recipient_data = state.selected_recipient_index
+                            .and_then(|r_idx| state.recipients_master.get(r_idx).cloned());
+
+                        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
+                            if let Some(ref rec) = recipient_data {
+                                draft_rec.body = apply_variables(template.body.clone(), rec);
+                            } else {
+                                draft_rec.body = template.body.clone();
+                            }
+                        }
+                        state.status_message = format!("テンプレート「{}」を適用しました", template.name);
+                    }
+                }
+
                 if let Some(i) = delete_idx {
                     let client = GasClient::new(state.gas_url.clone());
                     if let Some(t) = state.templates.get(i) {
@@ -194,15 +213,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     state.selected_template_index = None;
                 }
             });
-            
-            // Re-apply template if it was just selected (simplified logic for now)
-            if ui.button("💾 テンプレートを保存").clicked() {
-                if let Some(idx) = state.selected_template_index {
-                    if let Some(template) = state.templates.get_mut(idx) {
-                        // Capture current editor state back to template if needed, 
-                        // but usually it's the other way. For crud, we need a separate editor.
-                        // Let's implement a quick inline save in Editor column.
+
+            // Manual template apply button
+            if ui.button("📝 テンプレート適用").on_hover_text("選択中のテンプレートを本文に適用").clicked() {
+                if let Some(t_idx) = state.selected_template_index {
+                    if let Some(template) = state.templates.get(t_idx).cloned() {
+                        state.mail_draft.subject = template.subject.clone();
+                        let active_idx = state.active_recipient_index;
+
+                        let recipient_data = state.selected_recipient_index
+                            .and_then(|r_idx| state.recipients_master.get(r_idx).cloned());
+
+                        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
+                            if let Some(ref rec) = recipient_data {
+                                draft_rec.body = apply_variables(template.body.clone(), rec);
+                            } else {
+                                draft_rec.body = template.body.clone();
+                            }
+                        }
+                        state.status_message = format!("テンプレート「{}」を適用しました", template.name);
                     }
+                } else {
+                    state.status_message = "テンプレートを選択してください".to_string();
                 }
             }
         });
