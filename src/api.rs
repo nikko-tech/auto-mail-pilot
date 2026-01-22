@@ -316,7 +316,12 @@ impl GasClient {
             .send()
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        let parsed: PostResponse = response.json().map_err(|e| format!("JSON parse error: {}", e))?;
+        let text = response.text().map_err(|e| format!("Failed to read response info: {}", e))?;
+        
+        // Debug
+        eprintln!("GAS save_template Response: {}", text);
+
+        let parsed: PostResponse = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {} | Raw: {}", e, text))?;
 
         if !parsed.success {
             return Err(parsed.error.unwrap_or("Unknown error".to_string()));
