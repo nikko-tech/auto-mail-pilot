@@ -157,9 +157,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.horizontal(|ui| {
                         ui.strong("👤 宛先");
                         ui.add_space(8.0);
-                        ui.add(egui::TextEdit::singleline(&mut state.recipient_search)
-                            .hint_text("検索...")
-                            .desired_width(100.0));
+                        egui::Frame::none()
+                            .fill(egui::Color32::from_gray(15))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(60)))
+                            .inner_margin(4.0)
+                            .rounding(3.0)
+                            .show(ui, |ui| {
+                                ui.add(egui::TextEdit::singleline(&mut state.recipient_search)
+                                    .hint_text("🔍 検索...")
+                                    .frame(false)
+                                    .desired_width(90.0));
+                            });
                         if ui.small_button("➕").on_hover_text("新規宛先").clicked() {
                             let new_rec = crate::models::RecipientData {
                                 id: (state.recipients_master.len() + 1).to_string(),
@@ -228,9 +236,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.horizontal(|ui| {
                         ui.strong("📝 テンプレート");
                         ui.add_space(8.0);
-                        ui.add(egui::TextEdit::singleline(&mut state.template_search)
-                            .hint_text("検索...")
-                            .desired_width(80.0));
+                        egui::Frame::none()
+                            .fill(egui::Color32::from_gray(15))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(60)))
+                            .inner_margin(4.0)
+                            .rounding(3.0)
+                            .show(ui, |ui| {
+                                ui.add(egui::TextEdit::singleline(&mut state.template_search)
+                                    .hint_text("🔍 検索...")
+                                    .frame(false)
+                                    .desired_width(70.0));
+                            });
                         if ui.small_button("➕").on_hover_text("新規テンプレート").clicked() {
                             let new_temp = crate::models::Template {
                                 id: (state.templates.len() + 1).to_string(),
@@ -368,39 +384,67 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 .unwrap_or_default();
 
             if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
-                egui::Grid::new("email_fields")
-                    .num_columns(2)
-                    .spacing([8.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.label("To:");
-                        ui.horizontal(|ui| {
+                // To field
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("To:").strong());
+                    ui.add_space(24.0);
+                    egui::Frame::none()
+                        .fill(egui::Color32::from_gray(20))
+                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_gray(70)))
+                        .inner_margin(6.0)
+                        .rounding(4.0)
+                        .show(ui, |ui| {
                             ui.add(egui::TextEdit::singleline(&mut recipient.email)
                                 .hint_text("メールアドレス")
-                                .desired_width(300.0));
-                            if !company_display.is_empty() {
-                                ui.label(egui::RichText::new(format!("← {}", company_display))
-                                    .color(ui.visuals().hyperlink_color));
-                            }
+                                .frame(false)
+                                .desired_width(280.0));
                         });
-                        ui.end_row();
-
-                        ui.label("件名:");
-                        ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject)
-                            .hint_text("件名を入力")
-                            .desired_width(f32::INFINITY));
-                        ui.end_row();
-                    });
+                    if !company_display.is_empty() {
+                        ui.label(egui::RichText::new(format!("← {}", company_display))
+                            .color(egui::Color32::from_rgb(120, 180, 255)));
+                    }
+                });
 
                 ui.add_space(8.0);
-                ui.label("本文:");
-                egui::ScrollArea::vertical()
-                    .id_salt("body_editor")
-                    .max_height(200.0)
+
+                // Subject field
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("件名:").strong());
+                    ui.add_space(12.0);
+                    egui::Frame::none()
+                        .fill(egui::Color32::from_gray(20))
+                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_gray(70)))
+                        .inner_margin(6.0)
+                        .rounding(4.0)
+                        .show(ui, |ui| {
+                            ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject)
+                                .hint_text("件名を入力")
+                                .frame(false)
+                                .desired_width(f32::INFINITY));
+                        });
+                });
+
+                ui.add_space(8.0);
+
+                // Body field
+                ui.label(egui::RichText::new("本文:").strong());
+                ui.add_space(4.0);
+                egui::Frame::none()
+                    .fill(egui::Color32::from_gray(20))
+                    .stroke(egui::Stroke::new(1.5, egui::Color32::from_gray(70)))
+                    .inner_margin(8.0)
+                    .rounding(4.0)
                     .show(ui, |ui| {
-                        ui.add(egui::TextEdit::multiline(&mut recipient.body)
-                            .hint_text("本文を入力...")
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(10));
+                        egui::ScrollArea::vertical()
+                            .id_salt("body_editor")
+                            .max_height(180.0)
+                            .show(ui, |ui| {
+                                ui.add(egui::TextEdit::multiline(&mut recipient.body)
+                                    .hint_text("本文を入力...")
+                                    .frame(false)
+                                    .desired_width(f32::INFINITY)
+                                    .desired_rows(10));
+                            });
                     });
 
                 // Signature preview

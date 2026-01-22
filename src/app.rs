@@ -49,6 +49,30 @@ impl MailApp {
         
         cc.egui_ctx.set_fonts(fonts);
 
+        // Set up custom visual styling for better contrast
+        let mut style = (*cc.egui_ctx.style()).clone();
+
+        // Make text edit fields more visible with better contrast
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_gray(35);  // Darker background for inputs
+        style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(80));
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_gray(45);
+        style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_gray(120));
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_gray(50);
+        style.visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 150, 220));
+
+        // Make selection more visible
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(60, 100, 150);
+        style.visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 150, 220));
+
+        // Extreme background (used for section panels)
+        style.visuals.extreme_bg_color = egui::Color32::from_gray(25);
+
+        // Window/panel backgrounds
+        style.visuals.window_fill = egui::Color32::from_gray(30);
+        style.visuals.panel_fill = egui::Color32::from_gray(28);
+
+        cc.egui_ctx.set_style(style);
+
         let mut state = AppState::default();
         
         // Load settings from GAS on startup
