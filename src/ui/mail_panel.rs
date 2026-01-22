@@ -158,8 +158,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.strong("👤 宛先");
                         ui.add_space(8.0);
                         egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(25, 50, 80))
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 90, 130)))
+                            .fill(egui::Color32::from_rgb(50, 80, 120))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 120, 170)))
                             .inner_margin(4.0)
                             .rounding(3.0)
                             .show(ui, |ui| {
@@ -237,8 +237,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         ui.strong("📝 テンプレート");
                         ui.add_space(8.0);
                         egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(25, 50, 80))
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 90, 130)))
+                            .fill(egui::Color32::from_rgb(50, 80, 120))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 120, 170)))
                             .inner_margin(4.0)
                             .rounding(3.0)
                             .show(ui, |ui| {
@@ -389,8 +389,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.label(egui::RichText::new("To:").strong());
                     ui.add_space(24.0);
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(25, 50, 80))
-                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(50, 90, 130)))
+                        .fill(egui::Color32::from_rgb(50, 80, 120))
+                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
                         .inner_margin(6.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
@@ -412,8 +412,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.label(egui::RichText::new("件名:").strong());
                     ui.add_space(12.0);
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(25, 50, 80))
-                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(50, 90, 130)))
+                        .fill(egui::Color32::from_rgb(50, 80, 120))
+                        .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
                         .inner_margin(6.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
