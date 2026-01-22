@@ -82,8 +82,10 @@ pub enum Tab {
 pub struct AppState {
     pub templates: Vec<Template>,
     pub selected_template_index: Option<usize>,
+    pub template_search: String,
     pub recipients_master: Vec<RecipientData>,
     pub selected_recipient_index: Option<usize>,
+    pub recipient_search: String,
     pub active_recipient_index: usize, // 0, 1, or 2
     pub signatures: Vec<Signature>,
     pub selected_signature_index: Option<usize>,
@@ -112,8 +114,10 @@ impl Default for AppState {
         Self {
             templates: Vec::new(),
             selected_template_index: None,
+            template_search: String::new(),
             recipients_master: Vec::new(),
             selected_recipient_index: None,
+            recipient_search: String::new(),
             active_recipient_index: 0,
             signatures: Vec::new(),
             selected_signature_index: None,

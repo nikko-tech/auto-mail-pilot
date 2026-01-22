@@ -118,14 +118,20 @@ impl eframe::App for MailApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut state = self.state.lock().unwrap();
 
-        egui::SidePanel::left("nav_panel").show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("メニュー");
-                ui.separator();
+        // Top tab bar (system tabs style)
+        egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
                 ui.selectable_value(&mut state.tab, Tab::Main, "✉ メール作成");
+                ui.separator();
                 ui.selectable_value(&mut state.tab, Tab::History, "📜 送信履歴");
+                ui.separator();
                 ui.selectable_value(&mut state.tab, Tab::Settings, "⚙ 設定");
             });
+        });
+
+        // Status bar at bottom
+        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+            ui.label(&state.status_message);
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -135,12 +141,5 @@ impl eframe::App for MailApp {
                 Tab::Settings => ui::settings_panel::show(ui, &mut state),
             }
         });
-        
-        // Show status message at bottom
-        if !state.status_message.is_empty() {
-             egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-                ui.label(&state.status_message);
-            });
-        }
     }
 }

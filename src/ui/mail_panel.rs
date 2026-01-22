@@ -10,13 +10,13 @@ pub fn select_recipient(state: &mut AppState, index: usize) {
         let active_idx = state.active_recipient_index;
         if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
             draft_rec.email = rec.email.clone();
-            
+
             // Auto-apply linked template if exists
             let linked_template = state.linkings_master.iter()
                 .find(|link| link.recipient_id == rec.id)
                 .and_then(|link| state.templates.iter()
                     .position(|t| t.id == link.template_id));
-            
+
             if let Some(template_idx) = linked_template {
                 state.selected_template_index = Some(template_idx);
                 if let Some(template) = state.templates.get(template_idx) {
@@ -29,6 +29,25 @@ pub fn select_recipient(state: &mut AppState, index: usize) {
                 }
             }
         }
+    }
+}
+
+fn apply_template(state: &mut AppState, template_idx: usize) {
+    if let Some(template) = state.templates.get(template_idx) {
+        state.mail_draft.subject = template.subject.clone();
+        let active_idx = state.active_recipient_index;
+
+        let recipient_data = state.selected_recipient_index
+            .and_then(|r_idx| state.recipients_master.get(r_idx).cloned());
+
+        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
+            if let Some(ref rec) = recipient_data {
+                draft_rec.body = apply_variables(template.body.clone(), rec);
+            } else {
+                draft_rec.body = template.body.clone();
+            }
+        }
+        state.status_message = format!("テンプレート「{}」を適用しました", template.name);
     }
 }
 
@@ -45,10 +64,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
         if extension == "csv" {
-            // CSV Import Logic
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let client = GasClient::new(state.gas_url.clone());
-                for line in content.lines().skip(1) { // Skip header
+                for line in content.lines().skip(1) {
                     let parts: Vec<&str> = line.split(',').collect();
                     if parts.len() >= 3 {
                         let rec = crate::models::RecipientData {
@@ -64,11 +82,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 state.status_message = format!("CSVから宛先をインポートしました: {}", path_str);
             }
         } else {
-            // Normal attachment logic
             if let (Ok(data), name) = (encode_file_to_base64(&path_str), path.file_name()) {
                 let file_name = name.map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
                 let mime_type = get_mime_type(&file_name);
-                
+
                 state.mail_draft.attachments.push(crate::models::Attachment {
                     file_path: path_str.to_string(),
                     file_name,
@@ -77,19 +94,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     mime_type,
                 });
 
-                // Auto-select recipient based on filename
                 if let Some(company) = extract_company_name_from_path(&path_str) {
-                    // Normalize for matching (remove spaces)
                     let company_normalized = company.replace(" ", "").replace("　", "");
 
                     if let Some(pos) = state.recipients_master.iter()
                         .position(|r| {
-                            // Check both company and name fields for match
                             let company_norm = r.company.replace(" ", "").replace("　", "");
                             let name_norm = r.name.replace(" ", "").replace("　", "");
                             let combined = format!("{}{}", name_norm, company_norm);
 
-                            // Check if company from filename matches any field
                             company_norm.contains(&company_normalized)
                                 || company_normalized.contains(&company_norm)
                                 || name_norm.contains(&company_normalized)
@@ -110,319 +123,241 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
         }
     }
 
-    ui.columns(3, |columns| {
-        // Column 1: Selection (Templates & Recipients)
-        columns[0].vertical(|ui| {
-            ui.heading("1. 宛先とテンプレート");
+    // ========== TOP SECTION: Recipients & Templates (dropdowns) ==========
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            // --- Recipients dropdown ---
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label("宛先:");
+                    ui.text_edit_singleline(&mut state.recipient_search);
+                    if ui.button("➕").on_hover_text("新規宛先").clicked() {
+                        let new_rec = crate::models::RecipientData {
+                            id: (state.recipients_master.len() + 1).to_string(),
+                            company: "新規会社".to_string(),
+                            name: "氏名".to_string(),
+                            email: "".to_string(),
+                        };
+                        state.recipients_master.push(new_rec);
+                    }
+                });
+
+                let search_lower = state.recipient_search.to_lowercase();
+                let filtered_recipients: Vec<(usize, String)> = state.recipients_master.iter()
+                    .enumerate()
+                    .filter(|(_, r)| {
+                        search_lower.is_empty()
+                        || r.name.to_lowercase().contains(&search_lower)
+                        || r.company.to_lowercase().contains(&search_lower)
+                        || r.email.to_lowercase().contains(&search_lower)
+                    })
+                    .map(|(i, r)| (i, format!("{} ({})", r.name, r.company)))
+                    .collect();
+
+                egui::ScrollArea::vertical().id_salt("recipients_dropdown").max_height(120.0).show(ui, |ui| {
+                    let mut clicked_idx = None;
+                    for (i, label) in &filtered_recipients {
+                        if ui.selectable_label(state.selected_recipient_index == Some(*i), label).clicked() {
+                            clicked_idx = Some(*i);
+                        }
+                    }
+                    if let Some(i) = clicked_idx {
+                        select_recipient(state, i);
+                    }
+                });
+            });
+
             ui.separator();
-            
-            ui.horizontal(|ui| {
-                ui.label("宛先リスト:");
-                if ui.button("➕").on_hover_text("新規宛先を追加").clicked() {
-                    let new_rec = crate::models::RecipientData {
-                        id: (state.recipients_master.len() + 1).to_string(),
-                        company: "新規会社".to_string(),
-                        name: "氏名".to_string(),
-                        email: "".to_string(),
-                    };
-                    state.recipients_master.push(new_rec);
-                }
-            });
 
-            egui::ScrollArea::vertical().id_salt("recipients_scroll").max_height(200.0).show(ui, |ui| {
-                let mut clicked_idx = None;
-                let mut delete_idx = None;
-                for (i, rec) in state.recipients_master.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        let label = format!("{} ({})", rec.name, rec.company);
-                        if ui.selectable_label(state.selected_recipient_index == Some(i), label).clicked() {
-                            clicked_idx = Some(i);
+            // --- Templates dropdown ---
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label("テンプレート:");
+                    ui.text_edit_singleline(&mut state.template_search);
+                    if ui.button("➕").on_hover_text("新規テンプレート").clicked() {
+                        let new_temp = crate::models::Template {
+                            id: (state.templates.len() + 1).to_string(),
+                            name: "新しいテンプレート".to_string(),
+                            subject: "".to_string(),
+                            body: "".to_string(),
+                        };
+                        state.templates.push(new_temp);
+                    }
+                });
+
+                let search_lower = state.template_search.to_lowercase();
+                let filtered_templates: Vec<(usize, String)> = state.templates.iter()
+                    .enumerate()
+                    .filter(|(_, t)| {
+                        search_lower.is_empty()
+                        || t.name.to_lowercase().contains(&search_lower)
+                        || t.subject.to_lowercase().contains(&search_lower)
+                    })
+                    .map(|(i, t)| (i, t.name.clone()))
+                    .collect();
+
+                egui::ScrollArea::vertical().id_salt("templates_dropdown").max_height(120.0).show(ui, |ui| {
+                    let mut apply_idx = None;
+                    for (i, label) in &filtered_templates {
+                        if ui.selectable_label(state.selected_template_index == Some(*i), label).clicked() {
+                            state.selected_template_index = Some(*i);
+                            apply_idx = Some(*i);
                         }
-                        if ui.button("🗑").clicked() {
-                            delete_idx = Some(i);
-                        }
-                    });
-                }
-                if let Some(i) = clicked_idx {
-                    select_recipient(state, i);
-                }
-                if let Some(i) = delete_idx {
-                    state.recipients_master.remove(i);
-                    state.selected_recipient_index = None;
-                }
+                    }
+                    if let Some(i) = apply_idx {
+                        apply_template(state, i);
+                    }
+                });
             });
 
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.label("テンプレート:");
-                if ui.button("➕").on_hover_text("新規テンプレートを追加").clicked() {
-                    let new_temp = crate::models::Template {
-                        id: (state.templates.len() + 1).to_string(),
-                        name: "新しいテンプレート".to_string(),
-                        subject: "".to_string(),
-                        body: "".to_string(),
-                    };
-                    state.templates.push(new_temp);
-                }
+
+            // --- Signature selector ---
+            ui.vertical(|ui| {
+                ui.label("署名:");
+                egui::ScrollArea::vertical().id_salt("signatures_dropdown").max_height(120.0).show(ui, |ui| {
+                    let mut sel_sig_idx = state.selected_signature_index;
+                    for (i, sig) in state.signatures.iter().enumerate() {
+                        if ui.selectable_label(sel_sig_idx == Some(i), &sig.name).clicked() {
+                            sel_sig_idx = Some(i);
+                            let client = GasClient::new(state.gas_url.clone());
+                            let mut settings = std::collections::HashMap::new();
+                            settings.insert("selected_signature_index".to_string(), i.to_string());
+                            let _ = client.save_settings(&settings);
+                        }
+                    }
+                    state.selected_signature_index = sel_sig_idx;
+                });
             });
+        });
+    });
 
-            egui::ScrollArea::vertical().id_salt("templates_scroll").max_height(200.0).show(ui, |ui| {
-                let mut selected_idx = state.selected_template_index;
-                let mut delete_idx = None;
-                let mut apply_template_idx: Option<usize> = None;
-                for (i, template) in state.templates.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        if ui.selectable_label(selected_idx == Some(i), &template.name).clicked() {
-                            selected_idx = Some(i);
-                            apply_template_idx = Some(i);
-                        }
-                        if ui.button("🗑").clicked() {
-                            delete_idx = Some(i);
-                        }
-                    });
-                }
-                state.selected_template_index = selected_idx;
+    ui.separator();
 
-                // Apply template when selected (auto-apply on click)
-                if let Some(t_idx) = apply_template_idx {
-                    if let Some(template) = state.templates.get(t_idx) {
-                        state.mail_draft.subject = template.subject.clone();
-                        let active_idx = state.active_recipient_index;
-
-                        // Get recipient data for variable substitution
-                        let recipient_data = state.selected_recipient_index
-                            .and_then(|r_idx| state.recipients_master.get(r_idx).cloned());
-
-                        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
-                            if let Some(ref rec) = recipient_data {
-                                draft_rec.body = apply_variables(template.body.clone(), rec);
-                            } else {
-                                draft_rec.body = template.body.clone();
-                            }
-                        }
-                        state.status_message = format!("テンプレート「{}」を適用しました", template.name);
-                    }
-                }
-
-                if let Some(i) = delete_idx {
-                    let client = GasClient::new(state.gas_url.clone());
-                    if let Some(t) = state.templates.get(i) {
-                        let _ = client.delete_template(&t.name);
-                    }
-                    state.templates.remove(i);
-                    state.selected_template_index = None;
-                }
-            });
-
-            // Manual template apply button
-            if ui.button("📝 テンプレート適用").on_hover_text("選択中のテンプレートを本文に適用").clicked() {
-                if let Some(t_idx) = state.selected_template_index {
-                    if let Some(template) = state.templates.get(t_idx).cloned() {
-                        state.mail_draft.subject = template.subject.clone();
-                        let active_idx = state.active_recipient_index;
-
-                        let recipient_data = state.selected_recipient_index
-                            .and_then(|r_idx| state.recipients_master.get(r_idx).cloned());
-
-                        if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
-                            if let Some(ref rec) = recipient_data {
-                                draft_rec.body = apply_variables(template.body.clone(), rec);
-                            } else {
-                                draft_rec.body = template.body.clone();
-                            }
-                        }
-                        state.status_message = format!("テンプレート「{}」を適用しました", template.name);
-                    }
+    // ========== MIDDLE SECTION: Email Editor ==========
+    ui.group(|ui| {
+        // Recipient Tabs
+        ui.horizontal(|ui| {
+            for i in 0..3 {
+                let has_email = state.mail_draft.recipients.get(i)
+                    .map(|r| !r.email.is_empty())
+                    .unwrap_or(false);
+                let label = if has_email {
+                    format!("宛先{} ●", i + 1)
                 } else {
-                    state.status_message = "テンプレートを選択してください".to_string();
+                    format!("宛先{}", i + 1)
+                };
+                if ui.selectable_label(state.active_recipient_index == i, label).clicked() {
+                    state.active_recipient_index = i;
                 }
             }
         });
 
-        // Column 2: Editor
-        columns[1].vertical(|ui| {
-            ui.heading("2. 内容の編集");
-            ui.separator();
+        ui.separator();
 
-            // --- Master Data Quick Editor ---
-            if let Some(_idx) = state.selected_template_index {
-                ui.group(|ui| {
-                    ui.label("📝 テンプレート編集:");
-                    if let Some(template) = state.templates.get_mut(_idx) {
-                        ui.horizontal(|ui| {
-                            ui.label("名:"); ui.text_edit_singleline(&mut template.name);
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("件:"); ui.text_edit_singleline(&mut template.subject);
-                        });
-                        ui.label("本文:");
-                        ui.text_edit_multiline(&mut template.body);
-                        if ui.button("💾 GASに保存").clicked() {
-                            let client = GasClient::new(state.gas_url.clone());
-                            match client.save_template(template) {
-                                Ok(_) => state.status_message = "テンプレートを保存しました".to_string(),
-                                Err(e) => state.status_message = format!("保存失敗: {}", e),
-                            }
-                        }
-                    }
-                });
-            }
-
-            if let Some(idx) = state.selected_recipient_index {
-                ui.group(|ui| {
-                    ui.label("👤 宛先情報編集:");
-                    if let Some(rec) = state.recipients_master.get_mut(idx) {
-                        ui.horizontal(|ui| {
-                            ui.label("会社:"); ui.text_edit_singleline(&mut rec.company);
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("氏名:"); ui.text_edit_singleline(&mut rec.name);
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("メール:"); ui.text_edit_singleline(&mut rec.email);
-                        });
-                        if ui.button("💾 GASに保存").clicked() {
-                            let client = GasClient::new(state.gas_url.clone());
-                            match client.save_recipient(rec) {
-                                Ok(_) => state.status_message = "宛先情報を保存しました".to_string(),
-                                Err(e) => state.status_message = format!("保存失敗: {}", e),
-                            }
-                        }
-                    }
-                });
-            }
-            ui.separator();
-            
-            ui.label("作成中のメール件名:");
-            ui.text_edit_singleline(&mut state.mail_draft.subject);
-            
-            ui.add_space(8.0);
-            ui.label("署名:");
-            egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
-                let mut sel_sig_idx = state.selected_signature_index;
-                for (i, sig) in state.signatures.iter().enumerate() {
-                    if ui.selectable_label(sel_sig_idx == Some(i), &sig.name).clicked() {
-                        sel_sig_idx = Some(i);
-                        
-                        // Save signature selection to settings
-                        let client = GasClient::new(state.gas_url.clone());
-                        let mut settings = std::collections::HashMap::new();
-                        settings.insert("selected_signature_index".to_string(), i.to_string());
-                        let _ = client.save_settings(&settings);
-                    }
-                }
-                state.selected_signature_index = sel_sig_idx;
-            });
-
-            ui.add_space(8.0);
-            
-            // Recipient Tabs
+        let active_idx = state.active_recipient_index;
+        if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
             ui.horizontal(|ui| {
-                for i in 0..3 {
-                    let label = format!("宛先{}", i + 1);
-                    if ui.selectable_label(state.active_recipient_index == i, label).clicked() {
-                        state.active_recipient_index = i;
-                    }
-                }
+                ui.label("宛先メール:");
+                ui.add(egui::TextEdit::singleline(&mut recipient.email).desired_width(300.0));
             });
-            
-            let active_idx = state.active_recipient_index;
-            if let Some(recipient) = state.mail_draft.recipients.get_mut(active_idx) {
-                ui.group(|ui| {
-                    ui.label(format!("宛先{}:", active_idx + 1));
-                    ui.text_edit_singleline(&mut recipient.email);
-                    ui.add_space(4.0);
-                    ui.label("本文:");
-                    ui.text_edit_multiline(&mut recipient.body);
-                    
-                    // Signature preview
-                    ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("件名:");
+                ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject).desired_width(400.0));
+            });
+
+            ui.add_space(4.0);
+            ui.label("本文:");
+            egui::ScrollArea::vertical().id_salt("body_editor").max_height(250.0).show(ui, |ui| {
+                ui.add(egui::TextEdit::multiline(&mut recipient.body)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(12));
+            });
+
+            // Signature preview
+            if let Some(sig_idx) = state.selected_signature_index {
+                if let Some(sig) = state.signatures.get(sig_idx) {
                     ui.separator();
-                    ui.label("📝 署名プレビュー:");
-                    if let Some(sig_idx) = state.selected_signature_index {
-                        if let Some(sig) = state.signatures.get(sig_idx) {
-                            ui.group(|ui| {
-                                ui.label(&sig.content);
+                    ui.collapsing("署名プレビュー", |ui| {
+                        ui.label(&sig.content);
+                    });
+                }
+            }
+        }
+    });
+
+    ui.separator();
+
+    // ========== BOTTOM SECTION: Attachments & Send ==========
+    ui.horizontal(|ui| {
+        // Attachments
+        ui.group(|ui| {
+            ui.label("📎 添付ファイル:");
+            egui::ScrollArea::horizontal().id_salt("attachments_list").show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let mut to_remove = None;
+                    for (i, att) in state.mail_draft.attachments.iter_mut().enumerate() {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut att.enabled, "");
+                                ui.label(&att.file_name);
+                                if ui.small_button("✕").clicked() {
+                                    to_remove = Some(i);
+                                }
                             });
-                        }
-                    } else {
-                        ui.label("（署名が選択されていません）");
+                        });
+                    }
+                    if let Some(i) = to_remove {
+                        state.mail_draft.attachments.remove(i);
                     }
                 });
-            }
-        });
-
-        // Column 3: Send
-        columns[2].vertical(|ui| {
-            ui.heading("3. 送信");
-            ui.separator();
-            
-            let mut valid_recipients = Vec::new();
-            for (i, rec) in state.mail_draft.recipients.iter().enumerate() {
-                if !rec.email.is_empty() {
-                    valid_recipients.push((i, rec));
-                }
-            }
-
-            if valid_recipients.is_empty() {
-                ui.label("宛先が未選択です");
-            } else {
-                for (i, rec) in &valid_recipients {
-                    ui.group(|ui| {
-                        ui.label(format!("宛先{}:", i + 1));
-                        ui.strong(&rec.email);
-                    });
-                }
-            }
-            
-            ui.add_space(10.0);
-            ui.label("📎 添付ファイル:");
-            egui::ScrollArea::vertical().id_salt("attachments_scroll").max_height(100.0).show(ui, |ui| {
-                let mut to_remove = None;
-                for (i, att) in state.mail_draft.attachments.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut att.enabled, "");
-                        ui.label(&att.file_name);
-                        if ui.button("🗑").clicked() {
-                            to_remove = Some(i);
-                        }
-                    });
-                }
-                if let Some(i) = to_remove {
-                    state.mail_draft.attachments.remove(i);
-                }
             });
-
             if state.mail_draft.attachments.is_empty() {
                 ui.weak("ファイルをドロップして追加");
             }
-            
-            ui.add_space(10.0);
-            if ui.button("📧 一括送信する").clicked() {
-                if !valid_recipients.is_empty() {
-                     let client = GasClient::new(state.gas_url.clone());
-                     state.status_message = "送信中...".to_string();
-                     let signature = state.selected_signature_index
-                        .and_then(|idx| state.signatures.get(idx))
-                        .map(|sig| format!("\n\n{}", sig.content))
-                        .unwrap_or_default();
+        });
 
-                     let items: Vec<(&str, &str, String)> = valid_recipients.iter()
-                        .map(|(_, rec)| (
-                            rec.email.as_str(), 
-                            state.mail_draft.subject.as_str(), 
-                            format!("{}{}", rec.body, signature)
-                        ))
-                        .collect();
-                     
-                     let items_ref: Vec<(&str, &str, &str)> = items.iter()
-                        .map(|(to, sub, body)| (*to, *sub, body.as_str()))
-                        .collect();
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Send button
+            let valid_count = state.mail_draft.recipients.iter()
+                .filter(|r| !r.email.is_empty())
+                .count();
 
-                     match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
-                         Ok(_) => state.status_message = "すべて送信完了しました！".to_string(),
-                         Err(e) => state.status_message = format!("送信エラー: {}", e),
-                     }
+            let send_label = if valid_count > 0 {
+                format!("📧 送信 ({}件)", valid_count)
+            } else {
+                "📧 送信".to_string()
+            };
+
+            if ui.add_enabled(valid_count > 0, egui::Button::new(send_label)).clicked() {
+                let client = GasClient::new(state.gas_url.clone());
+                state.status_message = "送信中...".to_string();
+
+                let signature = state.selected_signature_index
+                    .and_then(|idx| state.signatures.get(idx))
+                    .map(|sig| format!("\n\n{}", sig.content))
+                    .unwrap_or_default();
+
+                let valid_recipients: Vec<_> = state.mail_draft.recipients.iter()
+                    .filter(|r| !r.email.is_empty())
+                    .collect();
+
+                let items: Vec<(&str, &str, String)> = valid_recipients.iter()
+                    .map(|rec| (
+                        rec.email.as_str(),
+                        state.mail_draft.subject.as_str(),
+                        format!("{}{}", rec.body, signature)
+                    ))
+                    .collect();
+
+                let items_ref: Vec<(&str, &str, &str)> = items.iter()
+                    .map(|(to, sub, body)| (*to, *sub, body.as_str()))
+                    .collect();
+
+                match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
+                    Ok(_) => state.status_message = "すべて送信完了しました！".to_string(),
+                    Err(e) => state.status_message = format!("送信エラー: {}", e),
                 }
             }
         });
