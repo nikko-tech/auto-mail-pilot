@@ -1,15 +1,30 @@
 use eframe::egui;
-use crate::models::AppState;
+use crate::models::{AppState, PendingSendData, PendingRecipient};
 use crate::api::GasClient;
-use crate::utils::apply_variables;
+use crate::utils::{apply_variables, validate_send_safety};
 use crate::file_utils::{extract_company_name_from_path, extract_filename_parts, encode_file_to_base64, get_mime_type};
 
-pub fn select_recipient(state: &mut AppState, index: usize) {
+/// 宛先を選択し、ロック状態を設定する
+/// force_unlock: trueの場合、既存のロックを解除して新しい宛先を設定
+pub fn select_recipient(state: &mut AppState, index: usize, force_unlock: bool) {
+    let active_idx = state.active_recipient_index;
+
+    // ロックチェック
+    if let Some(draft_rec) = state.mail_draft.recipients.get(active_idx) {
+        if draft_rec.locked_recipient_id.is_some() && !force_unlock {
+            // ロックされている場合は警告メッセージを表示
+            state.status_message = "⚠️ 宛先はロックされています。変更するには「ロック解除」を押してください".to_string();
+            return;
+        }
+    }
+
     state.selected_recipient_index = Some(index);
     if let Some(rec) = state.recipients_master.get(index) {
-        let active_idx = state.active_recipient_index;
         if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
             draft_rec.email = rec.email.clone();
+            // 宛先をロック
+            draft_rec.locked_recipient_id = Some(rec.id.clone());
+            draft_rec.locked_company = Some(rec.company.clone());
 
             // Auto-apply linked template if exists
             let linked_template = state.linkings_master.iter()
@@ -29,6 +44,16 @@ pub fn select_recipient(state: &mut AppState, index: usize) {
                 }
             }
         }
+    }
+}
+
+/// 現在アクティブな宛先のロックを解除
+pub fn unlock_recipient(state: &mut AppState) {
+    let active_idx = state.active_recipient_index;
+    if let Some(draft_rec) = state.mail_draft.recipients.get_mut(active_idx) {
+        draft_rec.locked_recipient_id = None;
+        draft_rec.locked_company = None;
+        state.status_message = "🔓 宛先のロックを解除しました".to_string();
     }
 }
 
@@ -86,15 +111,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 let file_name = name.map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
                 let mime_type = get_mime_type(&file_name);
 
+                // ファイル名から会社名を抽出
+                let linked_company = extract_company_name_from_path(&path_str);
+                let active_idx = state.active_recipient_index;
+
                 state.mail_draft.attachments.push(crate::models::Attachment {
                     file_path: path_str.to_string(),
-                    file_name,
+                    file_name: file_name.clone(),
                     enabled: true,
                     data,
                     mime_type,
+                    linked_company: linked_company.clone(),
+                    linked_recipient_index: Some(active_idx),  // 現在アクティブな宛先に紐付け
                 });
 
-                if let Some(company) = extract_company_name_from_path(&path_str) {
+                if let Some(company) = linked_company {
                     let company_normalized = company.replace(" ", "").replace("　", "");
 
                     // Auto-select recipient from filename
@@ -110,14 +141,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                                 || combined.contains(&company_normalized)
                         })
                     {
-                        select_recipient(state, pos);
+                        select_recipient(state, pos, true);  // force_unlock = true for auto-selection
                         let rec = &state.recipients_master[pos];
                         let display_name = if rec.company.is_empty() {
                             rec.name.clone()
                         } else {
                             format!("{} ({})", rec.name, rec.company)
                         };
-                        state.status_message = format!("ファイル名から宛先を自動選択: {}", display_name);
+                        state.status_message = format!("🔒 ファイル名から宛先を自動選択＆ロック: {}", display_name);
+
+                        // 添付ファイルの紐付けを更新
+                        if let Some(att) = state.mail_draft.attachments.last_mut() {
+                            att.linked_recipient_index = Some(state.active_recipient_index);
+                        }
                     }
 
                 }
@@ -154,8 +190,23 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             .show(ui, |ui| {
                 ui.set_min_width(220.0);
                 ui.vertical(|ui| {
+                    // ロック状態を確認
+                    let active_idx = state.active_recipient_index;
+                    let is_locked = state.mail_draft.recipients
+                        .get(active_idx)
+                        .and_then(|r| r.locked_recipient_id.as_ref())
+                        .is_some();
+                    let locked_company = state.mail_draft.recipients
+                        .get(active_idx)
+                        .and_then(|r| r.locked_company.clone())
+                        .unwrap_or_default();
+
                     ui.horizontal(|ui| {
-                        ui.strong("👤 宛先");
+                        if is_locked {
+                            ui.strong("🔒 宛先");
+                        } else {
+                            ui.strong("👤 宛先");
+                        }
                         ui.add_space(8.0);
                         egui::Frame::none()
                             .fill(egui::Color32::from_rgb(50, 80, 120))
@@ -179,6 +230,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             state.recipients_master.push(new_rec);
                         }
                     });
+
+                    // ロック状態の表示とロック解除ボタン
+                    if is_locked {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("🔒 {}", locked_company))
+                                .color(egui::Color32::from_rgb(255, 200, 100))
+                                .small());
+                            if ui.small_button("解除").on_hover_text("宛先ロックを解除").clicked() {
+                                unlock_recipient(state);
+                            }
+                        });
+                    }
 
                     ui.add_space(4.0);
 
@@ -214,7 +277,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                                 }
                             }
                             if let Some(i) = clicked_idx {
-                                select_recipient(state, i);
+                                select_recipient(state, i, false);  // force_unlock = false
                             }
                             if filtered_recipients.is_empty() {
                                 ui.weak("宛先なし");
@@ -533,35 +596,254 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 .min_size(egui::vec2(100.0, 36.0));
 
             if ui.add_enabled(valid_count > 0, button).clicked() {
-                let client = GasClient::new(state.gas_url.clone());
-                state.status_message = "送信中...".to_string();
+                // 送信前検証を実行
+                let errors = validate_send_safety(
+                    &state.mail_draft.recipients,
+                    &state.recipients_master,
+                    &state.mail_draft.attachments,
+                );
 
-                let signature = state.selected_signature_index
-                    .and_then(|idx| state.signatures.get(idx))
-                    .map(|sig| format!("\n\n{}", sig.content))
-                    .unwrap_or_default();
+                if !errors.is_empty() {
+                    // 検証エラーがある場合
+                    state.validation_errors = errors;
+                    state.status_message = "⚠️ 検証エラーがあります。確認してください".to_string();
+                } else {
+                    // 検証OK → 確認ダイアログを表示
+                    // PendingSendDataを作成
+                    let signature = state.selected_signature_index
+                        .and_then(|idx| state.signatures.get(idx))
+                        .map(|sig| format!("\n\n{}", sig.content))
+                        .unwrap_or_default();
 
-                let valid_recipients: Vec<_> = state.mail_draft.recipients.iter()
-                    .filter(|r| !r.email.is_empty())
-                    .collect();
+                    let pending_recipients: Vec<PendingRecipient> = state.mail_draft.recipients.iter()
+                        .enumerate()
+                        .filter(|(_, r)| !r.email.is_empty())
+                        .map(|(idx, rec)| {
+                            let recipient_data = rec.locked_recipient_id.as_ref()
+                                .and_then(|id| state.recipients_master.iter().find(|r| &r.id == id));
 
-                let items: Vec<(&str, &str, String)> = valid_recipients.iter()
-                    .map(|rec| (
-                        rec.email.as_str(),
-                        state.mail_draft.subject.as_str(),
-                        format!("{}{}", rec.body, signature)
-                    ))
-                    .collect();
+                            let attachments: Vec<String> = state.mail_draft.attachments.iter()
+                                .filter(|a| a.enabled && a.linked_recipient_index == Some(idx))
+                                .map(|a| a.file_name.clone())
+                                .collect();
 
-                let items_ref: Vec<(&str, &str, &str)> = items.iter()
-                    .map(|(to, sub, body)| (*to, *sub, body.as_str()))
-                    .collect();
+                            PendingRecipient {
+                                email: rec.email.clone(),
+                                company: recipient_data.map(|r| r.company.clone()).unwrap_or_default(),
+                                name: recipient_data.map(|r| r.name.clone()).unwrap_or_default(),
+                                body: format!("{}{}", rec.body, signature),
+                                attachments,
+                            }
+                        })
+                        .collect();
 
-                match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
-                    Ok(_) => state.status_message = "すべて送信完了しました！".to_string(),
-                    Err(e) => state.status_message = format!("送信エラー: {}", e),
+                    state.pending_send_data = Some(PendingSendData {
+                        recipients: pending_recipients,
+                        subject: state.mail_draft.subject.clone(),
+                    });
+
+                    state.show_send_confirmation = true;
+                    state.confirmation_company_input = String::new();
+                    state.confirmation_checked = false;
+                    state.validation_errors.clear();
                 }
             }
         });
     });
+
+    // 検証エラー表示
+    if !state.validation_errors.is_empty() {
+        ui.add_space(8.0);
+        egui::Frame::none()
+            .fill(egui::Color32::from_rgb(80, 30, 30))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 80, 80)))
+            .inner_margin(12.0)
+            .rounding(6.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("⚠️ 送信前検証エラー").strong().color(egui::Color32::from_rgb(255, 150, 150)));
+                ui.add_space(8.0);
+                for error in &state.validation_errors {
+                    ui.label(egui::RichText::new(error).color(egui::Color32::from_rgb(255, 200, 200)));
+                }
+                ui.add_space(8.0);
+                if ui.button("確認しました").clicked() {
+                    state.validation_errors.clear();
+                }
+            });
+    }
+
+    // 送信前確認ダイアログ
+    if state.show_send_confirmation {
+        show_send_confirmation_dialog(ui, state);
+    }
+}
+
+/// 送信前確認ダイアログを表示
+fn show_send_confirmation_dialog(ui: &mut egui::Ui, state: &mut AppState) {
+    // pending_send_dataをクローンして借用問題を回避
+    let pending_clone = state.pending_send_data.clone();
+
+    let mut should_close = false;
+    let mut should_send = false;
+
+    egui::Window::new("⚠️ 送信前確認")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ui.ctx(), |ui| {
+            ui.set_min_width(450.0);
+
+            if let Some(ref pending) = pending_clone {
+                ui.label(egui::RichText::new("以下の内容で送信します。宛先が正しいことを確認してください。")
+                    .color(egui::Color32::from_rgb(255, 200, 100)));
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // 各宛先の情報を表示
+                for (i, recipient) in pending.recipients.iter().enumerate() {
+                    egui::Frame::none()
+                        .fill(ui.visuals().extreme_bg_color)
+                        .inner_margin(8.0)
+                        .rounding(4.0)
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(format!("【宛先{}】", i + 1)).strong());
+                            ui.horizontal(|ui| {
+                                ui.label("会社名:");
+                                ui.label(egui::RichText::new(&recipient.company)
+                                    .color(egui::Color32::from_rgb(100, 200, 255)));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("氏名:");
+                                ui.label(&recipient.name);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("メール:");
+                                ui.label(&recipient.email);
+                            });
+                            if !recipient.attachments.is_empty() {
+                                ui.horizontal(|ui| {
+                                    ui.label("添付:");
+                                    ui.label(recipient.attachments.join(", "));
+                                });
+                            }
+                        });
+                    ui.add_space(4.0);
+                }
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // 確認入力
+                let first_company = pending.recipients.first()
+                    .map(|r| r.company.clone())
+                    .unwrap_or_default();
+
+                ui.label(egui::RichText::new("確認のため、送信先の会社名を入力してください:")
+                    .color(egui::Color32::from_rgb(255, 200, 100)));
+                ui.add_space(4.0);
+
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(50, 80, 120))
+                    .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
+                    .inner_margin(6.0)
+                    .rounding(4.0)
+                    .show(ui, |ui| {
+                        ui.add(egui::TextEdit::singleline(&mut state.confirmation_company_input)
+                            .hint_text("会社名を入力...")
+                            .text_color(egui::Color32::WHITE)
+                            .frame(false)
+                            .desired_width(f32::INFINITY));
+                    });
+
+                // 入力が一致しているかチェック
+                let input_normalized = state.confirmation_company_input
+                    .replace(" ", "").replace("　", "").to_lowercase();
+                let expected_normalized = first_company
+                    .replace(" ", "").replace("　", "").to_lowercase();
+                let input_matches = !input_normalized.is_empty()
+                    && (input_normalized == expected_normalized
+                        || expected_normalized.contains(&input_normalized)
+                        || input_normalized.contains(&expected_normalized));
+
+                if input_matches {
+                    ui.label(egui::RichText::new("✓ 一致しています")
+                        .color(egui::Color32::from_rgb(100, 255, 100)));
+                } else if !state.confirmation_company_input.is_empty() {
+                    ui.label(egui::RichText::new("✗ 会社名が一致しません")
+                        .color(egui::Color32::from_rgb(255, 100, 100)));
+                }
+
+                ui.add_space(8.0);
+
+                // チェックボックス
+                ui.checkbox(&mut state.confirmation_checked,
+                    "宛先・添付ファイルが正しいことを確認しました");
+
+                ui.add_space(12.0);
+
+                // ボタン
+                ui.horizontal(|ui| {
+                    if ui.button("キャンセル").clicked() {
+                        should_close = true;
+                    }
+
+                    ui.add_space(16.0);
+
+                    let can_send = input_matches && state.confirmation_checked;
+
+                    let send_button = egui::Button::new(
+                        egui::RichText::new("📧 送信する").size(14.0)
+                    ).fill(if can_send {
+                        egui::Color32::from_rgb(50, 120, 50)
+                    } else {
+                        egui::Color32::from_rgb(80, 80, 80)
+                    });
+
+                    if ui.add_enabled(can_send, send_button).clicked() {
+                        should_send = true;
+                    }
+                });
+            }
+        });
+
+    // ダイアログを閉じる処理
+    if should_close {
+        state.show_send_confirmation = false;
+        state.pending_send_data = None;
+        state.confirmation_company_input.clear();
+        state.confirmation_checked = false;
+    }
+
+    // 送信処理
+    if should_send {
+        if let Some(ref pending) = state.pending_send_data {
+            let client = GasClient::new(state.gas_url.clone());
+
+            let items: Vec<(String, String, String)> = pending.recipients.iter()
+                .map(|rec| (
+                    rec.email.clone(),
+                    pending.subject.clone(),
+                    rec.body.clone()
+                ))
+                .collect();
+
+            let items_ref: Vec<(&str, &str, &str)> = items.iter()
+                .map(|(to, sub, body)| (to.as_str(), sub.as_str(), body.as_str()))
+                .collect();
+
+            match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
+                Ok(_) => state.status_message = "✅ すべて送信完了しました！".to_string(),
+                Err(e) => state.status_message = format!("❌ 送信エラー: {}", e),
+            }
+        }
+
+        // ダイアログを閉じる
+        state.show_send_confirmation = false;
+        state.pending_send_data = None;
+        state.confirmation_company_input.clear();
+        state.confirmation_checked = false;
+    }
 }
