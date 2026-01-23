@@ -1,10 +1,35 @@
 use eframe::egui;
-use crate::models::{AppState, Tab};
+use crate::models::{AppState, Tab, StartupPhase};
 use crate::ui;
 use std::sync::{Arc, Mutex};
+use std::thread;
+
+/// セッションファイルのパス（TEMPディレクトリに保存、PC再起動で消える）
+fn get_session_file_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("auto_mail_pilot_session.txt")
+}
+
+/// セッションを保存（ログイン成功時）
+fn save_session() {
+    let session_path = get_session_file_path();
+    let _ = std::fs::write(&session_path, "authenticated");
+}
+
+/// セッションを削除（ログアウト時）
+fn clear_session() {
+    let session_path = get_session_file_path();
+    let _ = std::fs::remove_file(&session_path);
+}
+
+/// セッションが有効かチェック
+fn check_session() -> bool {
+    let session_path = get_session_file_path();
+    session_path.exists()
+}
 
 pub struct MailApp {
     state: Arc<Mutex<AppState>>,
+    loading_started: bool,
 }
 
 impl MailApp {
@@ -75,78 +100,166 @@ impl MailApp {
 
         let mut state = AppState::default();
 
-        // Load settings from GAS on startup
-        if !state.gas_url.is_empty() {
-            let client = crate::api::GasClient::new(state.gas_url.clone());
-
-            // Auto connection test on startup
-            state.status_message = "GASに接続中...".to_string();
-            state.is_loading = true;
-
-            // Load saved settings
-            if let Ok(settings) = client.get_settings() {
-                if let Some(selected_signature_idx) = settings.get("selected_signature_index") {
-                    if let Ok(idx) = selected_signature_idx.parse::<usize>() {
-                        state.selected_signature_index = Some(idx);
-                    }
-                }
-            }
-
-            // Auto-fetch master data on startup
-            state.status_message = "マスターデータを取得中...".to_string();
-            state.is_loading = true;
-
-            let mut errors: Vec<String> = Vec::new();
-
-            // Fetch each data independently to avoid one failure blocking everything
-            match client.get_templates() {
-                Ok(templates) => state.templates = templates,
-                Err(e) => errors.push(format!("テンプレート: {}", e)),
-            }
-            match client.get_recipients() {
-                Ok(recipients) => state.recipients_master = recipients,
-                Err(e) => errors.push(format!("宛先: {}", e)),
-            }
-            match client.get_signatures() {
-                Ok(signatures) => state.signatures = signatures,
-                Err(e) => errors.push(format!("署名: {}", e)),
-            }
-            match client.get_linkings() {
-                Ok(linkings) => state.linkings_master = linkings,
-                Err(e) => errors.push(format!("紐付け: {}", e)),
-            }
-            match client.get_history() {
-                Ok(history) => state.history = history,
-                Err(_) => {} // 履歴がない場合はエラーとしない
-            }
-
-            if errors.is_empty() {
-                state.status_message = "起動完了".to_string();
-            } else {
-                state.status_message = format!("⚠ 一部データ取得失敗: {}", errors.join(", "));
-            }
-
-            // Select default signature if not already set
-            if state.selected_signature_index.is_none() && !state.signatures.is_empty() {
-                state.selected_signature_index = Some(0);
-            }
-
-            state.is_loading = false;
+        // セッションが有効なら自動ログイン
+        if check_session() {
+            state.is_authenticated = true;
         }
 
         Self {
             state: Arc::new(Mutex::new(state)),
+            loading_started: false,
         }
+    }
+
+    /// バックグラウンドでデータをロード
+    fn start_loading(&mut self, ctx: egui::Context) {
+        if self.loading_started {
+            return;
+        }
+        self.loading_started = true;
+
+        let state_clone = Arc::clone(&self.state);
+
+        thread::spawn(move || {
+            let gas_url = {
+                let state = state_clone.lock().unwrap();
+                state.gas_url.clone()
+            };
+
+            if gas_url.is_empty() {
+                let mut state = state_clone.lock().unwrap();
+                state.startup_phase = StartupPhase::Ready;
+                ctx.request_repaint();
+                return;
+            }
+
+            let client = crate::api::GasClient::new(gas_url);
+
+            // ロード進捗を更新するヘルパー
+            let update_message = |msg: &str| {
+                if let Ok(mut state) = state_clone.lock() {
+                    state.loading_message = msg.to_string();
+                }
+                ctx.request_repaint();
+            };
+
+            let mut errors: Vec<String> = Vec::new();
+
+            // 設定を取得
+            update_message("設定を読み込み中...");
+            if let Ok(settings) = client.get_settings() {
+                if let Ok(mut state) = state_clone.lock() {
+                    if let Some(selected_signature_idx) = settings.get("selected_signature_index") {
+                        if let Ok(idx) = selected_signature_idx.parse::<usize>() {
+                            state.selected_signature_index = Some(idx);
+                        }
+                    }
+                }
+            }
+
+            // テンプレート取得
+            update_message("テンプレートを取得中...");
+            match client.get_templates() {
+                Ok(templates) => {
+                    if let Ok(mut state) = state_clone.lock() {
+                        state.templates = templates;
+                    }
+                }
+                Err(e) => errors.push(format!("テンプレート: {}", e)),
+            }
+
+            // 宛先取得
+            update_message("宛先マスターを取得中...");
+            match client.get_recipients() {
+                Ok(recipients) => {
+                    if let Ok(mut state) = state_clone.lock() {
+                        state.recipients_master = recipients;
+                    }
+                }
+                Err(e) => errors.push(format!("宛先: {}", e)),
+            }
+
+            // 署名取得
+            update_message("署名を取得中...");
+            match client.get_signatures() {
+                Ok(signatures) => {
+                    if let Ok(mut state) = state_clone.lock() {
+                        state.signatures = signatures.clone();
+                        // デフォルト署名を選択
+                        if state.selected_signature_index.is_none() && !signatures.is_empty() {
+                            state.selected_signature_index = Some(0);
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("署名: {}", e)),
+            }
+
+            // 紐付けデータ取得
+            update_message("紐付けデータを取得中...");
+            match client.get_linkings() {
+                Ok(linkings) => {
+                    if let Ok(mut state) = state_clone.lock() {
+                        state.linkings_master = linkings;
+                    }
+                }
+                Err(e) => errors.push(format!("紐付け: {}", e)),
+            }
+
+            // 履歴取得
+            update_message("送信履歴を取得中...");
+            if let Ok(history) = client.get_history() {
+                if let Ok(mut state) = state_clone.lock() {
+                    state.history = history;
+                }
+            }
+
+            // 完了
+            if let Ok(mut state) = state_clone.lock() {
+                if errors.is_empty() {
+                    state.status_message = "起動完了".to_string();
+                } else {
+                    state.status_message = format!("⚠ 一部データ取得失敗: {}", errors.join(", "));
+                }
+                state.startup_phase = StartupPhase::Ready;
+                state.is_loading = false;
+            }
+            ctx.request_repaint();
+        });
     }
 }
 
 impl eframe::App for MailApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let startup_phase = {
+            let state = self.state.lock().unwrap();
+            state.startup_phase.clone()
+        };
+
+        // スプラッシュ画面またはローディング画面
+        if startup_phase == StartupPhase::Splash || startup_phase == StartupPhase::Loading {
+            self.show_splash_screen(ctx);
+
+            // スプラッシュ表示後、ロードを開始
+            if startup_phase == StartupPhase::Splash {
+                {
+                    let mut state = self.state.lock().unwrap();
+                    state.startup_phase = StartupPhase::Loading;
+                }
+                self.start_loading(ctx.clone());
+            }
+            return;
+        }
+
         let mut state = self.state.lock().unwrap();
 
         // 認証されていない場合はログイン画面を表示
         if !state.is_authenticated {
             ui::login_panel::show(ctx, &mut state);
+
+            // ログイン成功時にセッションを保存
+            if state.is_authenticated {
+                save_session();
+            }
             return;
         }
 
@@ -181,6 +294,7 @@ impl eframe::App for MailApp {
                         state.auth_username.clear();
                         state.auth_password.clear();
                         state.auth_error = None;
+                        clear_session();  // セッションを削除
                     }
                 });
             });
@@ -216,6 +330,62 @@ impl eframe::App for MailApp {
                 Tab::History => ui::history_panel::show(ui, &mut state),
                 Tab::Settings => ui::settings_panel::show(ui, &mut state),
             }
+        });
+    }
+}
+
+impl MailApp {
+    /// スプラッシュスクリーンを表示
+    fn show_splash_screen(&self, ctx: &egui::Context) {
+        let loading_message = {
+            let state = self.state.lock().unwrap();
+            state.loading_message.clone()
+        };
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(ui.available_height() / 3.0);
+
+                // アプリアイコン / ロゴ
+                ui.label(egui::RichText::new("✉")
+                    .size(80.0)
+                    .color(egui::Color32::from_rgb(100, 180, 255)));
+
+                ui.add_space(16.0);
+
+                // アプリ名
+                ui.label(egui::RichText::new("Auto Mail Pilot")
+                    .size(32.0)
+                    .strong()
+                    .color(egui::Color32::WHITE));
+
+                ui.add_space(8.0);
+
+                // サブタイトル
+                ui.label(egui::RichText::new("メール送信自動化ツール")
+                    .size(14.0)
+                    .color(egui::Color32::from_rgb(150, 150, 150)));
+
+                ui.add_space(40.0);
+
+                // ローディングスピナー（アニメーション）
+                let time = ui.input(|i| i.time);
+                let spinner_chars = ["◐", "◓", "◑", "◒"];
+                let spinner_idx = ((time * 8.0) as usize) % spinner_chars.len();
+                ui.label(egui::RichText::new(spinner_chars[spinner_idx])
+                    .size(24.0)
+                    .color(egui::Color32::from_rgb(100, 180, 255)));
+
+                ui.add_space(12.0);
+
+                // ローディングメッセージ
+                ui.label(egui::RichText::new(&loading_message)
+                    .size(14.0)
+                    .color(egui::Color32::from_rgb(180, 180, 180)));
+
+                // 継続的に再描画してアニメーションを動かす
+                ctx.request_repaint();
+            });
         });
     }
 }

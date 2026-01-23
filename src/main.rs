@@ -1,3 +1,6 @@
+// Windowsでコンソールウィンドウを非表示にする
+#![windows_subsystem = "windows"]
+
 mod models;
 mod api;
 mod app;

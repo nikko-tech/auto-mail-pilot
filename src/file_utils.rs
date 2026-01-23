@@ -52,21 +52,44 @@ pub fn check_file_size(file_path: &str) -> Result<u64, String> {
     Ok(size)
 }
 
+/// 書類タイプのキーワード（これらが最初にある場合、2番目のパーツが会社名）
+const DOCUMENT_TYPE_KEYWORDS: &[&str] = &[
+    "請求書", "納品書", "見積書", "発注書", "注文書", "領収書",
+    "契約書", "報告書", "提案書", "仕様書", "明細書", "通知書",
+    "invoice", "estimate", "quotation", "order", "receipt", "report",
+];
+
 /// Extract potential company name from filename.
-/// Recognizes formats like "CompanyName_Document.pdf", "CompanyName Report.pdf", etc.
+/// Recognizes formats like:
+/// - "CompanyName_Document.pdf" -> "CompanyName"
+/// - "請求書_CompanyName_Date.pdf" -> "CompanyName" (書類タイプが先頭の場合)
 pub fn extract_company_name_from_path(path: &str) -> Option<String> {
     let file_name = std::path::Path::new(path)
         .file_stem()?
         .to_str()?;
 
-    // Split by common delimiters and take the first part
+    // Split by common delimiters
     let delimiters = ['_', ' ', '(', '（', '【', '['];
-    let first_part = file_name.split(&delimiters[..]).next()?.trim();
+    let parts: Vec<&str> = file_name
+        .split(&delimiters[..])
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
 
-    if first_part.is_empty() {
-        None
+    if parts.is_empty() {
+        return None;
+    }
+
+    // 最初のパーツが書類タイプキーワードかチェック
+    let first_part_lower = parts[0].to_lowercase();
+    let is_first_part_document_type = DOCUMENT_TYPE_KEYWORDS.iter()
+        .any(|keyword| first_part_lower == keyword.to_lowercase());
+
+    // 書類タイプが先頭なら2番目のパーツを返す、そうでなければ最初のパーツを返す
+    if is_first_part_document_type && parts.len() > 1 {
+        Some(parts[1].to_string())
     } else {
-        Some(first_part.to_string())
+        Some(parts[0].to_string())
     }
 }
 
@@ -93,8 +116,14 @@ mod tests {
 
     #[test]
     fn test_extract_company_name() {
+        // 会社名が先頭のパターン
         assert_eq!(extract_company_name_from_path("株式会社サンプル_請求書.pdf"), Some("株式会社サンプル".to_string()));
         assert_eq!(extract_company_name_from_path("テスト商事 報告書.docx"), Some("テスト商事".to_string()));
         assert_eq!(extract_company_name_from_path("Example Corp(2024).pdf"), Some("Example Corp".to_string()));
+
+        // 書類タイプが先頭のパターン（2番目が会社名）
+        assert_eq!(extract_company_name_from_path("請求書_日興金属株式会社_20251224.pdf"), Some("日興金属株式会社".to_string()));
+        assert_eq!(extract_company_name_from_path("納品書_テスト商事_2024.pdf"), Some("テスト商事".to_string()));
+        assert_eq!(extract_company_name_from_path("見積書_ABC株式会社.pdf"), Some("ABC株式会社".to_string()));
     }
 }

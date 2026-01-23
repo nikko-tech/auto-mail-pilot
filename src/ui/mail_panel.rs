@@ -130,7 +130,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 let file_name = name.map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
                 let mime_type = get_mime_type(&file_name);
 
-                // ファイル名から会社名を抽出
+                // ファイル名から全パーツを抽出（会社名・人名マッチング用）
+                let filename_parts = extract_filename_parts(&path_str);
                 let linked_company = extract_company_name_from_path(&path_str);
                 let active_idx = state.active_recipient_index;
 
@@ -144,20 +145,30 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     linked_recipient_index: Some(active_idx),  // 現在アクティブな宛先に紐付け
                 });
 
-                if let Some(company) = linked_company {
-                    let company_normalized = company.replace(" ", "").replace("　", "");
+                // ファイル名の全パーツを使って宛先をマッチング
+                if !filename_parts.is_empty() {
+                    // 各パーツを正規化
+                    let parts_normalized: Vec<String> = filename_parts.iter()
+                        .map(|p| p.replace(" ", "").replace("　", "").to_lowercase())
+                        .filter(|p| p.len() >= 2)  // 2文字以上のパーツのみ
+                        .collect();
 
-                    // Auto-select recipient from filename
+                    // Auto-select recipient from filename (全パーツでマッチング)
                     if let Some(pos) = state.recipients_master.iter()
                         .position(|r| {
-                            let company_norm = r.company.replace(" ", "").replace("　", "");
-                            let name_norm = r.name.replace(" ", "").replace("　", "");
-                            let combined = format!("{}{}", name_norm, company_norm);
+                            let company_norm = r.company.replace(" ", "").replace("　", "").to_lowercase();
+                            let name_norm = r.name.replace(" ", "").replace("　", "").to_lowercase();
 
-                            company_norm.contains(&company_normalized)
-                                || company_normalized.contains(&company_norm)
-                                || name_norm.contains(&company_normalized)
-                                || combined.contains(&company_normalized)
+                            // いずれかのパーツがマッチするか確認
+                            parts_normalized.iter().any(|part| {
+                                // 完全一致または部分一致（両方向）
+                                company_norm == *part
+                                    || name_norm == *part
+                                    || (part.len() >= 3 && company_norm.contains(part))
+                                    || (part.len() >= 3 && part.contains(&company_norm) && !company_norm.is_empty())
+                                    || (part.len() >= 3 && name_norm.contains(part))
+                                    || (part.len() >= 3 && part.contains(&name_norm) && !name_norm.is_empty())
+                            })
                         })
                     {
                         select_recipient(state, pos, true);  // force_unlock = true for auto-selection
@@ -174,7 +185,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                             att.linked_recipient_index = Some(state.active_recipient_index);
                         }
                     }
-
                 }
 
                 // Auto-select template from filename (use all filename parts)
@@ -199,7 +209,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
     }
 
     // ========== TOP SECTION: Recipients & Templates (dropdowns) ==========
+    // 高さを固定して内部スクロール
+    let top_section_height = 120.0;
+
     ui.horizontal(|ui| {
+        ui.set_height(top_section_height);
+
         // --- Recipients dropdown ---
         egui::Frame::none()
             .fill(ui.visuals().extreme_bg_color)
@@ -207,7 +222,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             .outer_margin(2.0)
             .rounding(4.0)
             .show(ui, |ui| {
-                ui.set_min_width(220.0);
+                ui.set_width(state.col_recipients_width);
+                ui.set_height(top_section_height - 8.0);
                 ui.vertical(|ui| {
                     // ロック状態を確認
                     let active_idx = state.active_recipient_index;
@@ -254,8 +270,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     if is_locked {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(format!("🔒 {}", locked_company))
-                                .color(egui::Color32::from_rgb(255, 200, 100))
-                                .small());
+                                .color(egui::Color32::from_rgb(255, 80, 80))
+                                .size(14.0)
+                                .strong());
                             if ui.small_button("解除").on_hover_text("宛先ロックを解除").clicked() {
                                 unlock_recipient(state);
                             }
@@ -305,7 +322,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 });
             });
 
-        ui.add_space(8.0);
+        // リサイズハンドル（宛先カラム）
+        let resize_response = ui.add(egui::Separator::default().vertical().spacing(4.0));
+        if resize_response.dragged() {
+            state.col_recipients_width = (state.col_recipients_width + resize_response.drag_delta().x).max(100.0).min(500.0);
+        }
+        if resize_response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
 
         // --- Templates dropdown ---
         egui::Frame::none()
@@ -314,7 +338,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             .outer_margin(2.0)
             .rounding(4.0)
             .show(ui, |ui| {
-                ui.set_min_width(220.0);
+                ui.set_width(state.col_templates_width);
+                ui.set_height(top_section_height - 8.0);
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.strong("📝 テンプレート");
@@ -377,7 +402,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                 });
             });
 
-        ui.add_space(8.0);
+        // リサイズハンドル（テンプレートカラム）
+        let resize_response = ui.add(egui::Separator::default().vertical().spacing(4.0));
+        if resize_response.dragged() {
+            state.col_templates_width = (state.col_templates_width + resize_response.drag_delta().x).max(100.0).min(500.0);
+        }
+        if resize_response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
 
         // --- Signature selector ---
         egui::Frame::none()
@@ -386,7 +418,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             .outer_margin(2.0)
             .rounding(4.0)
             .show(ui, |ui| {
-                ui.set_min_width(150.0);
+                ui.set_width(state.col_signatures_width);
+                ui.set_height(top_section_height - 8.0);
                 ui.vertical(|ui| {
                     ui.strong("✍ 署名");
                     ui.add_space(4.0);
@@ -413,59 +446,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
             });
     });
 
-    ui.add_space(8.0);
-
-    // --- Master Data Quick Editor ---
-    ui.horizontal(|ui| {
-        if let Some(_idx) = state.selected_template_index {
-            ui.group(|ui| {
-                ui.label("📝 テンプレート編集:");
-                if let Some(template) = state.templates.get_mut(_idx) {
-                    ui.horizontal(|ui| {
-                        ui.label("名:"); ui.text_edit_singleline(&mut template.name);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("件:"); ui.text_edit_singleline(&mut template.subject);
-                    });
-                    ui.label("本文:");
-                    ui.text_edit_multiline(&mut template.body);
-                    if ui.button("💾 GASに保存").clicked() {
-                        let client = GasClient::new(state.gas_url.clone());
-                        match client.save_template(template) {
-                            Ok(_) => state.status_message = "✅ テンプレートを保存しました".to_string(),
-                            Err(e) => state.status_message = format!("❌ {}", e),
-                        }
-                    }
-                }
-            });
-        }
-
-        if let Some(idx) = state.selected_recipient_index {
-            ui.group(|ui| {
-                ui.label("👤 宛先情報編集:");
-                if let Some(rec) = state.recipients_master.get_mut(idx) {
-                    ui.horizontal(|ui| {
-                        ui.label("会社:"); ui.text_edit_singleline(&mut rec.company);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("氏名:"); ui.text_edit_singleline(&mut rec.name);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("メール:"); ui.text_edit_singleline(&mut rec.email);
-                    });
-                    if ui.button("💾 GASに保存").clicked() {
-                        let client = GasClient::new(state.gas_url.clone());
-                        match client.save_recipient(rec) {
-                            Ok(_) => state.status_message = "✅ 宛先情報を保存しました".to_string(),
-                            Err(e) => state.status_message = format!("❌ {}", e),
-                        }
-                    }
-                }
-            });
-        }
-    });
-
-    ui.add_space(8.0);
+    ui.add_space(4.0);
 
     // ========== MIDDLE SECTION: Email Editor ==========
     egui::Frame::none()
@@ -530,6 +511,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         .inner_margin(6.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
+                            // カーソル色：オレンジ（青の対局色）
+                            ui.visuals_mut().text_cursor.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
                             ui.add(egui::TextEdit::singleline(&mut recipient.email)
                                 .hint_text("メールアドレス")
                                 .text_color(egui::Color32::WHITE)
@@ -554,6 +537,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                         .inner_margin(6.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
+                            ui.visuals_mut().text_cursor.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
                             ui.add(egui::TextEdit::singleline(&mut state.mail_draft.subject)
                                 .hint_text("件名を入力")
                                 .text_color(egui::Color32::WHITE)
@@ -573,9 +557,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                     .inner_margin(8.0)
                     .rounding(4.0)
                     .show(ui, |ui| {
+                        ui.visuals_mut().text_cursor.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
                         egui::ScrollArea::vertical()
                             .id_salt("body_editor")
-                            .max_height(180.0)
+                            .max_height(state.body_editor_height)
                             .show(ui, |ui| {
                                 ui.add(egui::TextEdit::multiline(&mut recipient.body)
                                     .hint_text("本文を入力...")
@@ -585,6 +570,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
                                     .desired_rows(10));
                             });
                     });
+
+                // 本文エディタのリサイズハンドル
+                let resize_response = ui.add(egui::Separator::default().horizontal().spacing(4.0));
+                if resize_response.dragged() {
+                    state.body_editor_height = (state.body_editor_height + resize_response.drag_delta().y).max(50.0).min(400.0);
+                }
+                if resize_response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                }
 
                 // Signature preview
                 if let Some(sig_idx) = state.selected_signature_index {
@@ -803,53 +797,9 @@ fn show_send_confirmation_dialog(ui: &mut egui::Ui, state: &mut AppState) {
                     ui.add_space(4.0);
                 }
 
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
+                ui.add_space(12.0);
 
-                // 確認入力
-                let first_company = pending.recipients.first()
-                    .map(|r| r.company.clone())
-                    .unwrap_or_default();
-
-                ui.label(egui::RichText::new("確認のため、送信先の会社名を入力してください:")
-                    .color(egui::Color32::from_rgb(255, 200, 100)));
-                ui.add_space(4.0);
-
-                egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(50, 80, 120))
-                    .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
-                    .inner_margin(6.0)
-                    .rounding(4.0)
-                    .show(ui, |ui| {
-                        ui.add(egui::TextEdit::singleline(&mut state.confirmation_company_input)
-                            .hint_text("会社名を入力...")
-                            .text_color(egui::Color32::WHITE)
-                            .frame(false)
-                            .desired_width(f32::INFINITY));
-                    });
-
-                // 入力が一致しているかチェック
-                let input_normalized = state.confirmation_company_input
-                    .replace(" ", "").replace("　", "").to_lowercase();
-                let expected_normalized = first_company
-                    .replace(" ", "").replace("　", "").to_lowercase();
-                let input_matches = !input_normalized.is_empty()
-                    && (input_normalized == expected_normalized
-                        || expected_normalized.contains(&input_normalized)
-                        || input_normalized.contains(&expected_normalized));
-
-                if input_matches {
-                    ui.label(egui::RichText::new("✓ 一致しています")
-                        .color(egui::Color32::from_rgb(100, 255, 100)));
-                } else if !state.confirmation_company_input.is_empty() {
-                    ui.label(egui::RichText::new("✗ 会社名が一致しません")
-                        .color(egui::Color32::from_rgb(255, 100, 100)));
-                }
-
-                ui.add_space(8.0);
-
-                // チェックボックス
+                // チェックボックスのみで確認
                 ui.checkbox(&mut state.confirmation_checked,
                     "宛先・添付ファイルが正しいことを確認しました");
 
@@ -863,7 +813,7 @@ fn show_send_confirmation_dialog(ui: &mut egui::Ui, state: &mut AppState) {
 
                     ui.add_space(16.0);
 
-                    let can_send = input_matches && state.confirmation_checked;
+                    let can_send = state.confirmation_checked;
 
                     let send_button = egui::Button::new(
                         egui::RichText::new("📧 送信する").size(14.0)
@@ -906,7 +856,11 @@ fn show_send_confirmation_dialog(ui: &mut egui::Ui, state: &mut AppState) {
                 .collect();
 
             match client.send_batch_mail(items_ref, &state.mail_draft.attachments) {
-                Ok(_) => state.status_message = "✅ すべて送信完了しました！".to_string(),
+                Ok(_) => {
+                    state.status_message = "✅ すべて送信完了しました！".to_string();
+                    // 送信成功後、画面をリセットして次の送信に備える
+                    reset_mail_draft(state);
+                }
                 Err(e) => state.status_message = format!("❌ 送信エラー: {}", e),
             }
         }
@@ -917,4 +871,30 @@ fn show_send_confirmation_dialog(ui: &mut egui::Ui, state: &mut AppState) {
         state.confirmation_company_input.clear();
         state.confirmation_checked = false;
     }
+}
+
+/// 送信後にメール作成画面をリセット
+fn reset_mail_draft(state: &mut AppState) {
+    // 宛先をクリア
+    for recipient in &mut state.mail_draft.recipients {
+        recipient.email.clear();
+        recipient.body.clear();
+        recipient.locked_recipient_id = None;
+        recipient.locked_company = None;
+    }
+
+    // 件名をクリア
+    state.mail_draft.subject.clear();
+
+    // 添付ファイルをクリア
+    state.mail_draft.attachments.clear();
+
+    // 選択状態をリセット
+    state.selected_recipient_index = None;
+    state.selected_template_index = None;
+    state.active_recipient_index = 0;
+
+    // 検索ボックスをクリア
+    state.recipient_search.clear();
+    state.template_search.clear();
 }

@@ -87,6 +87,14 @@ pub enum Tab {
     Settings,
 }
 
+/// アプリの起動フェーズ
+#[derive(PartialEq, Clone)]
+pub enum StartupPhase {
+    Splash,      // スプラッシュ画面表示中
+    Loading,     // データロード中
+    Ready,       // 準備完了
+}
+
 pub struct AppState {
     pub templates: Vec<Template>,
     pub selected_template_index: Option<usize>,
@@ -104,6 +112,9 @@ pub struct AppState {
     pub gas_url: String,
     pub status_message: String,
     pub is_loading: bool,
+    // 起動フェーズ
+    pub startup_phase: StartupPhase,
+    pub loading_message: String,
     // 送信前確認用
     pub show_send_confirmation: bool,
     pub confirmation_company_input: String,
@@ -117,6 +128,12 @@ pub struct AppState {
     pub auth_error: Option<String>,
     pub expected_username: String,  // 正しいユーザー名（設定で変更可能）
     pub expected_password: String,  // 正しいパスワード（設定で変更可能）
+    // カラム幅（リサイズ可能）
+    pub col_recipients_width: f32,
+    pub col_templates_width: f32,
+    pub col_signatures_width: f32,
+    // 本文エディタの高さ（リサイズ可能）
+    pub body_editor_height: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -164,6 +181,8 @@ impl Default for AppState {
             gas_url: "https://script.google.com/macros/s/AKfycbwUAgPH2nh3Mn7JYbsRUWadfXHlCPkPKMm1OOqzbFg1mjjDvVS76ZKuM8sNB1NwP2wE/exec".to_string(),
             status_message: "準備完了".to_string(),
             is_loading: false,
+            startup_phase: StartupPhase::Splash,
+            loading_message: "起動中...".to_string(),
             show_send_confirmation: false,
             confirmation_company_input: String::new(),
             confirmation_checked: false,
@@ -174,8 +193,14 @@ impl Default for AppState {
             auth_username: String::new(),
             auth_password: String::new(),
             auth_error: None,
-            expected_username: "admin".to_string(),
-            expected_password: "mail2024".to_string(),
+            expected_username: "nikko".to_string(),
+            expected_password: "nikko".to_string(),
+            // カラム幅のデフォルト値
+            col_recipients_width: 220.0,
+            col_templates_width: 220.0,
+            col_signatures_width: 150.0,
+            // 本文エディタの高さ
+            body_editor_height: 100.0,
         }
     }
 }

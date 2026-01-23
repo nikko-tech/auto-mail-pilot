@@ -31,11 +31,14 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                     ui.label("ユーザー名");
                     ui.add_space(4.0);
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(50, 80, 120))
+                        .fill(egui::Color32::from_rgb(40, 50, 70))
                         .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
                         .inner_margin(8.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
+                            // カーソルが見えるように選択色を設定（青の対局色：オレンジ）
+                            ui.visuals_mut().selection.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
+                            ui.visuals_mut().text_cursor.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
                             ui.add(egui::TextEdit::singleline(&mut state.auth_username)
                                 .hint_text("ユーザー名を入力...")
                                 .text_color(egui::Color32::WHITE)
@@ -49,11 +52,14 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) {
                     ui.label("パスワード");
                     ui.add_space(4.0);
                     egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(50, 80, 120))
+                        .fill(egui::Color32::from_rgb(40, 50, 70))
                         .stroke(egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 120, 170)))
                         .inner_margin(8.0)
                         .rounding(4.0)
                         .show(ui, |ui| {
+                            // カーソル色：オレンジ
+                            ui.visuals_mut().selection.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
+                            ui.visuals_mut().text_cursor.stroke = egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 180, 0));
                             ui.add(egui::TextEdit::singleline(&mut state.auth_password)
                                 .hint_text("パスワードを入力...")
                                 .password(true)
