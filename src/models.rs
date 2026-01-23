@@ -40,6 +40,8 @@ pub struct MailDraft {
 pub struct RecipientInfo {
     pub email: String,
     pub body: String,
+    pub locked_recipient_id: Option<String>,  // 紐付けられた宛先マスターのID
+    pub locked_company: Option<String>,       // ロック時の会社名（照合用）
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +51,10 @@ pub struct Attachment {
     pub enabled: bool,
     pub data: String,        // Base64 encoded content
     pub mime_type: String,
+    #[serde(default)]
+    pub linked_company: Option<String>,      // ファイル名から抽出した会社名
+    #[serde(default)]
+    pub linked_recipient_index: Option<usize>, // 紐付けられた宛先インデックス
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -68,6 +74,8 @@ impl Default for Attachment {
             enabled: true,
             data: String::new(),
             mime_type: String::new(),
+            linked_company: None,
+            linked_recipient_index: None,
         }
     }
 }
@@ -96,6 +104,34 @@ pub struct AppState {
     pub gas_url: String,
     pub status_message: String,
     pub is_loading: bool,
+    // 送信前確認用
+    pub show_send_confirmation: bool,
+    pub confirmation_company_input: String,
+    pub confirmation_checked: bool,
+    pub validation_errors: Vec<String>,
+    pub pending_send_data: Option<PendingSendData>,
+    // Basic認証
+    pub is_authenticated: bool,
+    pub auth_username: String,
+    pub auth_password: String,
+    pub auth_error: Option<String>,
+    pub expected_username: String,  // 正しいユーザー名（設定で変更可能）
+    pub expected_password: String,  // 正しいパスワード（設定で変更可能）
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PendingSendData {
+    pub recipients: Vec<PendingRecipient>,
+    pub subject: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PendingRecipient {
+    pub email: String,
+    pub company: String,
+    pub name: String,
+    pub body: String,
+    pub attachments: Vec<String>,  // ファイル名のリスト
 }
 
 impl Default for MailDraft {
@@ -128,6 +164,18 @@ impl Default for AppState {
             gas_url: "https://script.google.com/macros/s/AKfycbwUAgPH2nh3Mn7JYbsRUWadfXHlCPkPKMm1OOqzbFg1mjjDvVS76ZKuM8sNB1NwP2wE/exec".to_string(),
             status_message: "準備完了".to_string(),
             is_loading: false,
+            show_send_confirmation: false,
+            confirmation_company_input: String::new(),
+            confirmation_checked: false,
+            validation_errors: Vec::new(),
+            pending_send_data: None,
+            // Basic認証（デフォルト: admin/password）
+            is_authenticated: false,
+            auth_username: String::new(),
+            auth_password: String::new(),
+            auth_error: None,
+            expected_username: "admin".to_string(),
+            expected_password: "mail2024".to_string(),
         }
     }
 }

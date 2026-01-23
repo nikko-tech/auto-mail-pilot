@@ -144,6 +144,12 @@ impl eframe::App for MailApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut state = self.state.lock().unwrap();
 
+        // 認証されていない場合はログイン画面を表示
+        if !state.is_authenticated {
+            ui::login_panel::show(ctx, &mut state);
+            return;
+        }
+
         // Top tab bar (system tabs style)
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -167,6 +173,16 @@ impl eframe::App for MailApp {
                 tab_button(ui, &mut state.tab, Tab::History, "📜 送信履歴");
                 ui.add_space(16.0);
                 tab_button(ui, &mut state.tab, Tab::Settings, "⚙ 設定");
+
+                // ログアウトボタン（右寄せ）
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("🚪 ログアウト").clicked() {
+                        state.is_authenticated = false;
+                        state.auth_username.clear();
+                        state.auth_password.clear();
+                        state.auth_error = None;
+                    }
+                });
             });
             ui.add_space(4.0);
         });
