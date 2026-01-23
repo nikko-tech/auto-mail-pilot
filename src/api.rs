@@ -65,7 +65,6 @@ struct GetTemplatesResponse {
 #[derive(Deserialize)]
 pub struct GetRecipientsResponse {
     pub recipients: Vec<RecipientData>,
-    // error: Option<String>, // Removed error field as per instruction's implied change
 }
 
 #[derive(Deserialize)]

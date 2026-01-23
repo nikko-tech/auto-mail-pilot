@@ -48,7 +48,7 @@ function getTemplates() {
 function getRecipients() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('宛先リスト');
-  
+
   if (!sheet) {
     // 宛先リストがない場合は新規作成（デモデータ付き）
     sheet = ss.insertSheet('宛先リスト');
@@ -58,14 +58,31 @@ function getRecipients() {
 
   const data = sheet.getDataRange().getValues();
   const recipients = [];
-  
+
+  // ヘッダー行からカラムインデックスを動的に取得
+  const headers = data[0];
+  const colMap = {};
+  for (let j = 0; j < headers.length; j++) {
+    const h = String(headers[j]).toLowerCase().trim();
+    if (h === 'id' || h === 'ID') colMap.id = j;
+    else if (h.includes('会社') || h.includes('company')) colMap.company = j;
+    else if (h.includes('氏名') || h.includes('name') || h.includes('名前') || h.includes('担当')) colMap.name = j;
+    else if (h.includes('メール') || h.includes('email') || h.includes('mail') || h.includes('アドレス')) colMap.email = j;
+  }
+
+  // フォールバック: カラムが見つからない場合はデフォルト位置
+  if (colMap.id === undefined) colMap.id = 0;
+  if (colMap.company === undefined) colMap.company = 1;
+  if (colMap.name === undefined) colMap.name = 2;
+  if (colMap.email === undefined) colMap.email = 3;
+
   // ヘッダー行をスキップ
   for (let i = 1; i < data.length; i++) {
     recipients.push({
-      id: String(data[i][0] || i + 1), // ID列が空なら行番号
-      company: data[i][1] || "",
-      name: data[i][2] || "",
-      email: data[i][3] || ""
+      id: String(data[i][colMap.id] || i + 1),
+      company: String(data[i][colMap.company] || ""),
+      name: String(data[i][colMap.name] || ""),
+      email: String(data[i][colMap.email] || "")
     });
   }
 

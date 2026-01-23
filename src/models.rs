@@ -82,8 +82,10 @@ pub enum Tab {
 pub struct AppState {
     pub templates: Vec<Template>,
     pub selected_template_index: Option<usize>,
+    pub template_search: String,
     pub recipients_master: Vec<RecipientData>,
     pub selected_recipient_index: Option<usize>,
+    pub recipient_search: String,
     pub active_recipient_index: usize, // 0, 1, or 2
     pub signatures: Vec<Signature>,
     pub selected_signature_index: Option<usize>,
@@ -112,8 +114,10 @@ impl Default for AppState {
         Self {
             templates: Vec::new(),
             selected_template_index: None,
+            template_search: String::new(),
             recipients_master: Vec::new(),
             selected_recipient_index: None,
+            recipient_search: String::new(),
             active_recipient_index: 0,
             signatures: Vec::new(),
             selected_signature_index: None,
@@ -121,7 +125,7 @@ impl Default for AppState {
             mail_draft: MailDraft::default(),
             history: Vec::new(),
             tab: Tab::Main,
-            gas_url: "https://script.google.com/macros/s/AKfycbz6VWxPgAfDA5GafN_5GYyK-ki8hInk077CmoixNtkHmeIJRkWr_TDHj3ZpIgVXmKI/exec".to_string(),
+            gas_url: "https://script.google.com/macros/s/AKfycbwUAgPH2nh3Mn7JYbsRUWadfXHlCPkPKMm1OOqzbFg1mjjDvVS76ZKuM8sNB1NwP2wE/exec".to_string(),
             status_message: "準備完了".to_string(),
             is_loading: false,
         }
