@@ -147,10 +147,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState) {
 
                 // ファイル名の全パーツを使って宛先をマッチング
                 if !filename_parts.is_empty() {
-                    // 各パーツを正規化
+                    // 除外すべき一般的な単語（法人格名、書類タイプなど）
+                    let exclude_words = [
+                        "株式会社", "有限会社", "合同会社", "合資会社", "一般社団法人", "公益社団法人",
+                        "(株)", "（株）", "(有)", "（有）", "(合)", "（合）",
+                        "co", "ltd", "inc", "corp", "corporation", "company",
+                        "納品書", "請求書", "見積書", "発注書", "注文書", "領収書",
+                        "契約書", "報告書", "提案書", "仕様書", "明細書", "通知書",
+                    ];
+
+                    // 各パーツを正規化し、除外単語をフィルタ
                     let parts_normalized: Vec<String> = filename_parts.iter()
                         .map(|p| p.replace(" ", "").replace("　", "").to_lowercase())
                         .filter(|p| p.len() >= 2)  // 2文字以上のパーツのみ
+                        .filter(|p| !exclude_words.iter().any(|ex| ex.to_lowercase() == *p))  // 除外単語を除く
+                        .filter(|p| !p.chars().all(|c| c.is_ascii_digit()))  // 数字のみのパーツを除外
                         .collect();
 
                     // Auto-select recipient from filename (全パーツでマッチング)
