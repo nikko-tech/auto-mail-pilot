@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Mail Pilot</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Segoe UI', 'MS Gothic', sans-serif; }
+  .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
+  .dropdown-item:hover { background: #e0e7ff; }
+  textarea { resize: vertical; }
+  .tab-active { border-bottom: 3px solid #4f46e5; color: #4f46e5; font-weight: 700; }
+  .status-success { color: #16a34a; }
+  .status-error { color: #dc2626; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .spinner { border: 3px solid #e5e7eb; border-top: 3px solid #4f46e5; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-gradient-to-br from-slate-100 to-indigo-100 min-h-screen">
+
+<!-- ===== LOGIN ===== -->
+<div id="login-screen" class="flex items-center justify-center min-h-screen">
+  <div class="glass rounded-2xl shadow-xl p-8 w-96 fade-in">
+    <h1 class="text-2xl font-bold text-center mb-1">Auto Mail Pilot</h1>
+    <p class="text-sm text-gray-500 text-center mb-6">Web Edition</p>
+    <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm rounded p-2 mb-4"></div>
+    <label class="block text-sm font-medium mb-1">ユーザー名</label>
+    <input id="login-user" type="text" class="w-full border rounded-lg px-3 py-2 mb-3 focus:ring-2 focus:ring-indigo-400 outline-none" value="">
+    <label class="block text-sm font-medium mb-1">パスワード</label>
+    <input id="login-pass" type="password" class="w-full border rounded-lg px-3 py-2 mb-4 focus:ring-2 focus:ring-indigo-400 outline-none" value="">
+    <button onclick="doLogin()" class="w-full bg-indigo-600 text-white rounded-lg py-2 hover:bg-indigo-700 transition font-medium">ログイン</button>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="app-screen" class="hidden flex flex-col min-h-screen">
+  <!-- Top Bar -->
+  <header class="bg-white/90 backdrop-blur shadow-sm px-6 py-3 flex items-center justify-between">
+    <div class="flex gap-1">
+      <button onclick="switchTab('mail')"    id="tab-mail"    class="px-4 py-2 text-sm rounded-t tab-active transition">&#9993; メール作成</button>
+      <button onclick="switchTab('history')" id="tab-history" class="px-4 py-2 text-sm rounded-t transition">&#128220; 送信履歴</button>
+      <button onclick="switchTab('settings')" id="tab-settings" class="px-4 py-2 text-sm rounded-t transition">&#9881; 設定</button>
+    </div>
+    <button onclick="doLogout()" class="text-sm text-gray-500 hover:text-red-500 transition">ログアウト</button>
+  </header>
+
+  <!-- Content -->
+  <main class="flex-1 p-6 overflow-auto">
+
+    <!-- ===== MAIL TAB ===== -->
+    <div id="panel-mail" class="fade-in max-w-4xl mx-auto space-y-4">
+      <!-- Row: Recipients + Templates + Signatures -->
+      <div class="grid grid-cols-3 gap-4">
+        <!-- Recipients -->
+        <div class="glass rounded-xl p-4 shadow">
+          <label class="block text-xs font-semibold text-gray-500 mb-1">宛先</label>
+          <input id="recipient-search" type="text" placeholder="検索..." class="w-full border rounded px-2 py-1 text-sm mb-2 focus:ring-2 focus:ring-indigo-300 outline-none" oninput="filterRecipients()">
+          <select id="recipient-select" size="6" class="w-full border rounded text-sm" onchange="onRecipientSelect()"></select>
+        </div>
+        <!-- Templates -->
+        <div class="glass rounded-xl p-4 shadow">
+          <label class="block text-xs font-semibold text-gray-500 mb-1">テンプレート</label>
+          <input id="template-search" type="text" placeholder="検索..." class="w-full border rounded px-2 py-1 text-sm mb-2 focus:ring-2 focus:ring-indigo-300 outline-none" oninput="filterTemplates()">
+          <select id="template-select" size="6" class="w-full border rounded text-sm" onchange="onTemplateSelect()"></select>
+        </div>
+        <!-- Signatures -->
+        <div class="glass rounded-xl p-4 shadow">
+          <label class="block text-xs font-semibold text-gray-500 mb-1">署名</label>
+          <select id="signature-select" size="7" class="w-full border rounded text-sm" onchange="onSignatureSelect()"></select>
+        </div>
+      </div>
+
+      <!-- Selected Recipient Info -->
+      <div id="recipient-info" class="glass rounded-xl p-3 shadow text-sm text-gray-600 hidden">
+        <span id="recipient-info-text"></span>
+      </div>
+
+      <!-- Subject -->
+      <div class="glass rounded-xl p-4 shadow">
+        <label class="block text-xs font-semibold text-gray-500 mb-1">件名</label>
+        <input id="mail-subject" type="text" class="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-indigo-300 outline-none" placeholder="件名を入力...">
+      </div>
+
+      <!-- Body -->
+      <div class="glass rounded-xl p-4 shadow">
+        <label class="block text-xs font-semibold text-gray-500 mb-1">本文</label>
+        <textarea id="mail-body" rows="12" class="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" placeholder="本文を入力..."></textarea>
+      </div>
+
+      <!-- Signature Preview -->
+      <div id="sig-preview" class="glass rounded-xl p-4 shadow hidden">
+        <label class="block text-xs font-semibold text-gray-500 mb-1">署名プレビュー</label>
+        <pre id="sig-preview-text" class="text-xs text-gray-500 whitespace-pre-wrap"></pre>
+      </div>
+
+      <!-- Send -->
+      <div class="flex items-center justify-between">
+        <div id="validation-msg" class="text-sm text-red-500"></div>
+        <button onclick="confirmSend()" class="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition font-medium shadow">
+          &#9993; 送信
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== HISTORY TAB ===== -->
+    <div id="panel-history" class="hidden fade-in max-w-5xl mx-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold">送信履歴</h2>
+        <button onclick="loadHistory()" class="bg-white border px-4 py-1 rounded-lg text-sm hover:bg-gray-50 transition">&#128260; 更新</button>
+      </div>
+      <div class="glass rounded-xl shadow overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="px-4 py-2 text-left">日付</th>
+              <th class="px-4 py-2 text-left">宛先</th>
+              <th class="px-4 py-2 text-left">件名</th>
+              <th class="px-4 py-2 text-left">ステータス</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+        <div id="history-empty" class="hidden text-center text-gray-400 py-8">履歴がありません</div>
+      </div>
+    </div>
+
+    <!-- ===== SETTINGS TAB ===== -->
+    <div id="panel-settings" class="hidden fade-in max-w-xl mx-auto space-y-4">
+      <h2 class="text-lg font-bold">設定</h2>
+      <div class="glass rounded-xl p-4 shadow space-y-3">
+        <label class="block text-xs font-semibold text-gray-500">GAS ウェブアプリ URL</label>
+        <input id="gas-url-input" type="text" class="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" placeholder="https://script.google.com/macros/s/...">
+        <div class="flex gap-2">
+          <button onclick="saveGasUrl()" class="bg-indigo-600 text-white px-4 py-1 rounded-lg text-sm hover:bg-indigo-700 transition">保存</button>
+          <button onclick="testConnection()" class="bg-white border px-4 py-1 rounded-lg text-sm hover:bg-gray-50 transition">接続テスト</button>
+        </div>
+        <div id="settings-msg" class="text-sm"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Status Bar -->
+  <footer id="status-bar" class="bg-white/80 backdrop-blur border-t px-6 py-2 text-sm text-gray-500">
+    準備完了
+  </footer>
+</div>
+
+<!-- ===== CONFIRM MODAL ===== -->
+<div id="confirm-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+  <div class="glass rounded-2xl shadow-2xl p-6 w-[28rem] fade-in">
+    <h3 class="text-lg font-bold mb-3">送信確認</h3>
+    <div id="confirm-summary" class="text-sm space-y-1 mb-4"></div>
+    <label class="flex items-center gap-2 text-sm mb-4">
+      <input id="confirm-check" type="checkbox"> 内容を確認しました
+    </label>
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeConfirm()" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 transition">キャンセル</button>
+      <button id="confirm-send-btn" onclick="executeSend()" disabled class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed">送信する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== STATE ==========
+const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbwUAgPH2nh3Mn7JYbsRUWadfXHlCPkPKMm1OOqzbFg1mjjDvVS76ZKuM8sNB1NwP2wE/exec";
+let state = {
+  templates: [],
+  recipients: [],
+  signatures: [],
+  linkings: [],
+  history: [],
+  selectedRecipient: null,
+  selectedTemplate: null,
+  selectedSignature: null,
+};
+
+// ========== AUTH ==========
+function doLogin() {
+  const u = document.getElementById('login-user').value;
+  const p = document.getElementById('login-pass').value;
+  if (u === 'nikko' && p === 'nikko') {
+    sessionStorage.setItem('auth', '1');
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    initApp();
+  } else {
+    const el = document.getElementById('login-error');
+    el.textContent = 'ユーザー名またはパスワードが違います';
+    el.classList.remove('hidden');
+  }
+}
+function doLogout() {
+  sessionStorage.removeItem('auth');
+  location.reload();
+}
+function checkAuth() {
+  if (sessionStorage.getItem('auth') === '1') {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    initApp();
+  }
+}
+
+// ========== GAS API ==========
+function getGasUrl() {
+  return localStorage.getItem('gas_url') || DEFAULT_GAS_URL;
+}
+async function gasGet(action) {
+  const url = getGasUrl() + '?action=' + action;
+  const res = await fetch(url);
+  return await res.json();
+}
+async function gasPost(payload) {
+  const res = await fetch(getGasUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload),
+  });
+  return await res.json();
+}
+
+// ========== TABS ==========
+function switchTab(name) {
+  ['mail','history','settings'].forEach(t => {
+    document.getElementById('panel-' + t).classList.toggle('hidden', t !== name);
+    document.getElementById('tab-' + t).classList.toggle('tab-active', t === name);
+  });
+  if (name === 'history') loadHistory();
+}
+
+// ========== INIT ==========
+async function initApp() {
+  setStatus('⏳ データ読み込み中...');
+  document.getElementById('gas-url-input').value = getGasUrl();
+  try {
+    const [tpl, rec, sig, lnk] = await Promise.all([
+      gasGet('getTemplates'),
+      gasGet('getRecipients'),
+      gasGet('getSignatures'),
+      gasGet('getLinkings'),
+    ]);
+    state.templates = tpl.templates || [];
+    state.recipients = rec.recipients || [];
+    state.signatures = sig.signatures || [];
+    state.linkings = lnk.linkings || [];
+    renderRecipients();
+    renderTemplates();
+    renderSignatures();
+    setStatus('✅ 読み込み完了 — テンプレ ' + state.templates.length + '件, 宛先 ' + state.recipients.length + '件');
+  } catch (e) {
+    setStatus('❌ 読み込みエラー: ' + e.message);
+  }
+}
+
+// ========== RENDER ==========
+function renderRecipients(filter) {
+  const sel = document.getElementById('recipient-select');
+  sel.innerHTML = '';
+  const q = (filter || '').toLowerCase();
+  state.recipients.forEach((r, i) => {
+    const label = r.company + ' / ' + r.name + ' <' + r.email + '>';
+    if (q && !label.toLowerCase().includes(q)) return;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+}
+function renderTemplates(filter) {
+  const sel = document.getElementById('template-select');
+  sel.innerHTML = '';
+  const q = (filter || '').toLowerCase();
+  state.templates.forEach((t, i) => {
+    const label = t.name + ' — ' + t.subject;
+    if (q && !label.toLowerCase().includes(q)) return;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+}
+function renderSignatures() {
+  const sel = document.getElementById('signature-select');
+  sel.innerHTML = '<option value="">（署名なし）</option>';
+  state.signatures.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+}
+
+// ========== FILTER ==========
+function filterRecipients() {
+  renderRecipients(document.getElementById('recipient-search').value);
+}
+function filterTemplates() {
+  renderTemplates(document.getElementById('template-search').value);
+}
+
+// ========== SELECT HANDLERS ==========
+function onRecipientSelect() {
+  const idx = document.getElementById('recipient-select').value;
+  if (idx === '') return;
+  state.selectedRecipient = state.recipients[idx];
+  const r = state.selectedRecipient;
+  document.getElementById('recipient-info').classList.remove('hidden');
+  document.getElementById('recipient-info-text').textContent =
+    '📧 ' + r.email + '　|　🏢 ' + r.company + '　|　👤 ' + r.name;
+
+  // Auto-apply linked template
+  const link = state.linkings.find(l => l.recipient_id === r.id);
+  if (link) {
+    const tIdx = state.templates.findIndex(t => t.id === link.template_id || t.name === link.template_id);
+    if (tIdx >= 0) {
+      document.getElementById('template-select').value = tIdx;
+      onTemplateSelect();
+    }
+  }
+  applyVariables();
+}
+
+function onTemplateSelect() {
+  const idx = document.getElementById('template-select').value;
+  if (idx === '') return;
+  state.selectedTemplate = state.templates[idx];
+  document.getElementById('mail-subject').value = state.selectedTemplate.subject;
+  document.getElementById('mail-body').value = state.selectedTemplate.body;
+  applyVariables();
+}
+
+function onSignatureSelect() {
+  const idx = document.getElementById('signature-select').value;
+  const preview = document.getElementById('sig-preview');
+  if (idx === '') {
+    state.selectedSignature = null;
+    preview.classList.add('hidden');
+    return;
+  }
+  state.selectedSignature = state.signatures[idx];
+  document.getElementById('sig-preview-text').textContent = state.selectedSignature.content;
+  preview.classList.remove('hidden');
+}
+
+// ========== VARIABLE SUBSTITUTION ==========
+function applyVariables() {
+  const r = state.selectedRecipient;
+  if (!r) return;
+  let subj = document.getElementById('mail-subject').value;
+  let body = document.getElementById('mail-body').value;
+  const vars = { name: r.name, company: r.company, email: r.email, id: r.id };
+  for (const [k, v] of Object.entries(vars)) {
+    const re = new RegExp('\\{\\{' + k + '\\}\\}', 'g');
+    subj = subj.replace(re, v || '');
+    body = body.replace(re, v || '');
+  }
+  document.getElementById('mail-subject').value = subj;
+  document.getElementById('mail-body').value = body;
+}
+
+// ========== SEND ==========
+function confirmSend() {
+  const errors = [];
+  if (!state.selectedRecipient) errors.push('宛先が選択されていません');
+  if (!document.getElementById('mail-subject').value.trim()) errors.push('件名が空です');
+  if (!document.getElementById('mail-body').value.trim()) errors.push('本文が空です');
+  const msgEl = document.getElementById('validation-msg');
+  if (errors.length) {
+    msgEl.textContent = errors.join(' / ');
+    return;
+  }
+  msgEl.textContent = '';
+
+  const r = state.selectedRecipient;
+  const subj = document.getElementById('mail-subject').value;
+  document.getElementById('confirm-summary').innerHTML =
+    '<p><b>宛先:</b> ' + escHtml(r.company + ' / ' + r.name + ' &lt;' + r.email + '&gt;') + '</p>' +
+    '<p><b>件名:</b> ' + escHtml(subj) + '</p>';
+  document.getElementById('confirm-check').checked = false;
+  document.getElementById('confirm-send-btn').disabled = true;
+  document.getElementById('confirm-modal').classList.remove('hidden');
+}
+document.addEventListener('change', e => {
+  if (e.target.id === 'confirm-check') {
+    document.getElementById('confirm-send-btn').disabled = !e.target.checked;
+  }
+});
+function closeConfirm() {
+  document.getElementById('confirm-modal').classList.add('hidden');
+}
+async function executeSend() {
+  closeConfirm();
+  const r = state.selectedRecipient;
+  let body = document.getElementById('mail-body').value;
+  if (state.selectedSignature) {
+    body += '\n\n' + state.selectedSignature.content;
+  }
+  setStatus('⏳ 送信中...');
+  try {
+    const res = await gasPost({
+      action: 'sendMail',
+      to: r.email,
+      subject: document.getElementById('mail-subject').value,
+      body: body,
+    });
+    if (res.success) {
+      setStatus('✅ 送信完了: ' + r.email);
+      document.getElementById('mail-subject').value = '';
+      document.getElementById('mail-body').value = '';
+      state.selectedRecipient = null;
+      state.selectedTemplate = null;
+      document.getElementById('recipient-info').classList.add('hidden');
+    } else {
+      setStatus('❌ 送信エラー: ' + (res.error || '不明'));
+    }
+  } catch (e) {
+    setStatus('❌ 通信エラー: ' + e.message);
+  }
+}
+
+// ========== HISTORY ==========
+async function loadHistory() {
+  setStatus('⏳ 履歴読み込み中...');
+  try {
+    const data = await gasGet('getLogs');
+    state.history = data.logs || [];
+    const tbody = document.getElementById('history-body');
+    const empty = document.getElementById('history-empty');
+    tbody.innerHTML = '';
+    if (!state.history.length) {
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      state.history.forEach(h => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t hover:bg-gray-50';
+        const statusCls = (h.status || '').includes('Success') ? 'status-success' : 'status-error';
+        tr.innerHTML =
+          '<td class="px-4 py-2">' + escHtml(h.date) + '</td>' +
+          '<td class="px-4 py-2">' + escHtml(h.to) + '</td>' +
+          '<td class="px-4 py-2">' + escHtml(h.subject) + '</td>' +
+          '<td class="px-4 py-2 ' + statusCls + '">' + escHtml(h.status) + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+    setStatus('✅ 履歴 ' + state.history.length + '件取得');
+  } catch (e) {
+    setStatus('❌ 履歴取得エラー: ' + e.message);
+  }
+}
+
+// ========== SETTINGS ==========
+function saveGasUrl() {
+  const url = document.getElementById('gas-url-input').value.trim();
+  if (!url) return;
+  localStorage.setItem('gas_url', url);
+  document.getElementById('settings-msg').innerHTML = '<span class="text-green-600">✅ 保存しました</span>';
+}
+async function testConnection() {
+  const msg = document.getElementById('settings-msg');
+  msg.innerHTML = '<span class="spinner"></span> テスト中...';
+  try {
+    const data = await gasGet('getTemplates');
+    if (data.templates) {
+      msg.innerHTML = '<span class="text-green-600">✅ 接続成功 (テンプレ ' + data.templates.length + '件)</span>';
+    } else {
+      msg.innerHTML = '<span class="text-red-600">❌ レスポンス不正</span>';
+    }
+  } catch (e) {
+    msg.innerHTML = '<span class="text-red-600">❌ 接続失敗: ' + escHtml(e.message) + '</span>';
+  }
+}
+
+// ========== UTIL ==========
+function setStatus(text) {
+  document.getElementById('status-bar').textContent = text;
+}
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// ========== BOOT ==========
+window.addEventListener('DOMContentLoaded', checkAuth);
+document.getElementById('login-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(for dir in md-pdf-v2 fax-ocr-js dxf作成 配達 toriai 汎用BASE)",
+      "Bash(do echo \"=== $dir ===\" ls \"/Users/toshimasasakai/Library/CloudStorage/GoogleDrive-t.sakai@nikko-m.com/共有ドライブ/管理職/Antigraviti/専務antigravity/$dir/\")",
+      "Bash(done)",
+      "Bash(for dir in toriai テキストエディター 汎用BASE php-version dxf作成)",
+      "Bash(do echo \"=== $dir ===\" ls -la \"/Users/toshimasasakai/Library/CloudStorage/GoogleDrive-t.sakai@nikko-m.com/共有ドライブ/管理職/Antigraviti/専務antigravity/$dir/\")"
+    ]
+  }
+}
