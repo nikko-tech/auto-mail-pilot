@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "auto-mail-pilot",
+  "outputfilename": "auto-mail-pilot_v0.3",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "nikko-office",
+    "email": "office@nikko-m.com"
+  }
+}

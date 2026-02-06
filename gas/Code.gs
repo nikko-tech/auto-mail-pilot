@@ -1,5 +1,6 @@
 function doGet(e) {
-  const action = e.parameter.action || 'getTemplates';
+  // 直接実行時（eがない場合）のフォールバック
+  const action = (e && e.parameter && e.parameter.action) || 'getTemplates';
 
   if (action === 'getTemplates') {
     return getTemplates();
@@ -13,10 +14,33 @@ function doGet(e) {
     return getSettings();
   } else if (action === 'getLogs') {
     return getLogs();
+  } else if (action === 'getSpreadsheetUrl') {
+    return getSpreadsheetUrl();
+  } else if (action === 'test') {
+    // 接続テスト用
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: '接続成功' }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 
   return ContentService.createTextOutput(JSON.stringify({ error: 'Unknown action' }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// スプレッドシートのURLを返す
+function getSpreadsheetUrl() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ContentService.createTextOutput(JSON.stringify({
+    url: ss.getUrl(),
+    name: ss.getName()
+  }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// テスト用：スクリプトエディタから実行してログで確認
+function testShowSpreadsheetUrl() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log('スプレッドシート名: ' + ss.getName());
+  Logger.log('URL: ' + ss.getUrl());
 }
 
 function getTemplates() {
