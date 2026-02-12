@@ -42,13 +42,22 @@ type MailDraft struct {
 	Signature   string          `json:"signature"`   // 署名
 }
 
+// InlineImage はCID参照用インライン画像
+type InlineImage struct {
+	Key      string `json:"key"`      // CIDキー（例: "sig_img_0"）
+	Data     string `json:"data"`     // Base64エンコードデータ
+	MimeType string `json:"mimeType"` // MIMEタイプ
+}
+
 // SendMailRequest はメール送信リクエスト
 type SendMailRequest struct {
-	Action      string       `json:"action"`      // "sendMail"
-	To          string       `json:"to"`          // 宛先
-	Subject     string       `json:"subject"`     // 件名
-	Body        string       `json:"body"`        // 本文
-	Attachments []Attachment `json:"attachments"` // 添付ファイル
+	Action       string        `json:"action"`                 // "sendMail"
+	To           string        `json:"to"`                     // 宛先
+	Subject      string        `json:"subject"`                // 件名
+	Body         string        `json:"body"`                   // 本文（プレーンテキスト）
+	HtmlBody     string        `json:"htmlBody,omitempty"`     // HTML本文（署名含む）
+	Attachments  []Attachment  `json:"attachments"`            // 添付ファイル
+	InlineImages []InlineImage `json:"inlineImages,omitempty"` // CIDインライン画像
 }
 
 // SendMailResponse はメール送信レスポンス

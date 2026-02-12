@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"mime"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"desktop/internal/api"
@@ -46,11 +48,87 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.config = cfg
 
+	// ファイルベースHTML署名を読み込み
+	a.loadSignatureFromFile()
+
 	// APIクライアント初期化
 	a.apiClient = api.NewClient(cfg.GASURL)
 	a.apiClient.SetBasicAuth(cfg.BasicAuthID, cfg.BasicAuthPW)
 
 	logger.Info("アプリケーション準備完了")
+}
+
+// loadSignatureFromFile はexeディレクトリのsignature.htmlを読み込み、
+// 画像参照をBase64データURIに変換してメモリに保持する
+func (a *App) loadSignatureFromFile() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("署名読み込みでパニック発生: %v", r)
+		}
+	}()
+
+	exeDir, err := config.GetExeDir()
+	if err != nil {
+		logger.Error("exeディレクトリ取得失敗: %v", err)
+		return
+	}
+	logger.Info("署名検索ディレクトリ: %s", exeDir)
+
+	sigPath := filepath.Join(exeDir, "signature.html")
+	data, err := os.ReadFile(sigPath)
+	if err != nil {
+		logger.Info("signature.html未検出（スキップ）: %v", err)
+		return
+	}
+	logger.Info("signature.html読み込み成功 (%d bytes)", len(data))
+
+	htmlContent := string(data)
+
+	// <img src="ファイル名"> を検索してBase64データURIに置換
+	imgRe := regexp.MustCompile(`<img\s[^>]*src="([^"]+)"`)
+	matches := imgRe.FindAllStringSubmatchIndex(htmlContent, -1)
+	logger.Info("imgタグ検出: %d件", len(matches))
+
+	// 後ろから置換（インデックスずれ防止）
+	for i := len(matches) - 1; i >= 0; i-- {
+		m := matches[i]
+		// m[2]:m[3] がキャプチャグループ1（src属性値）
+		src := htmlContent[m[2]:m[3]]
+		logger.Info("img src発見: %s", src)
+
+		if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") {
+			continue
+		}
+
+		imgPath := filepath.Join(exeDir, src)
+		imgData, readErr := os.ReadFile(imgPath)
+		if readErr != nil {
+			logger.Error("署名画像読み込み失敗: %s - %v", imgPath, readErr)
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(src))
+		mimeType := "image/png"
+		switch ext {
+		case ".jpg", ".jpeg":
+			mimeType = "image/jpeg"
+		case ".gif":
+			mimeType = "image/gif"
+		case ".svg":
+			mimeType = "image/svg+xml"
+		case ".webp":
+			mimeType = "image/webp"
+		}
+
+		b64 := base64.StdEncoding.EncodeToString(imgData)
+		dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, b64)
+		logger.Info("署名画像Base64化: %s (%d bytes)", src, len(imgData))
+
+		htmlContent = htmlContent[:m[2]] + dataURI + htmlContent[m[3]:]
+	}
+
+	a.config.HtmlSignature = htmlContent
+	logger.Info("ファイルベースHTML署名読み込み完了 (%d bytes)", len(htmlContent))
 }
 
 // domReady はDOM準備完了時に呼ばれる
@@ -271,6 +349,22 @@ func (a *App) GetSignatures() ([]models.Signature, error) {
 	return a.apiClient.GetSignatures()
 }
 
+// GetHtmlSignature はHTML署名を返す
+func (a *App) GetHtmlSignature() string {
+	return a.config.HtmlSignature
+}
+
+// SaveHtmlSignature はHTML署名を保存
+func (a *App) SaveHtmlSignature(htmlSignature string) error {
+	a.config.HtmlSignature = htmlSignature
+	if err := config.Save(a.config); err != nil {
+		logger.Error("HTML署名保存失敗: %v", err)
+		return err
+	}
+	logger.Info("HTML署名保存成功")
+	return nil
+}
+
 // SendMail はメールを送信
 func (a *App) SendMail(to string, subject string, body string, attachments []models.Attachment) (*models.SendMailResponse, error) {
 	if a.config.GASURL == "" {
@@ -284,7 +378,89 @@ func (a *App) SendMail(to string, subject string, body string, attachments []mod
 		Attachments: attachments,
 	}
 
+	// HTML署名が設定されている場合、HTML本文を構築
+	if a.config.HtmlSignature != "" {
+		htmlBody := buildHtmlBody(body, a.config.HtmlSignature)
+		// データURIをCID参照に変換（MIMEエンコーディング問題回避）
+		htmlBody, inlineImages := extractInlineImages(htmlBody)
+		req.HtmlBody = htmlBody
+		req.InlineImages = inlineImages
+		// プレーンテキストフォールバック用にタグ除去版署名を追加
+		plainSig := stripHtmlTags(a.config.HtmlSignature)
+		req.Body = body + "\n\n" + plainSig
+		logger.Info("HTML送信: htmlBody=%d bytes, inlineImages=%d件", len(htmlBody), len(inlineImages))
+	}
+
 	return a.apiClient.SendMail(req)
+}
+
+// buildHtmlBody はプレーンテキスト本文とHTML署名を結合してHTML本文を生成
+func buildHtmlBody(plainTextBody string, htmlSignature string) string {
+	escaped := html.EscapeString(plainTextBody)
+	htmlBodyText := strings.ReplaceAll(escaped, "\n", "<br>\n")
+
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<div style="font-family: sans-serif; font-size: 14px;">
+<div>%s</div>
+<br>
+%s
+</div>
+</body>
+</html>`, htmlBodyText, htmlSignature)
+}
+
+// extractInlineImages はHTML内のdata:URIをCID参照に変換し、インライン画像を抽出する
+// これによりhtmlBodyサイズが大幅に縮小され、MIMEエンコーディングの問題を回避する
+func extractInlineImages(htmlContent string) (string, []models.InlineImage) {
+	re := regexp.MustCompile(`src="data:([^;]+);base64,([^"]+)"`)
+	matches := re.FindAllStringSubmatchIndex(htmlContent, -1)
+
+	if len(matches) == 0 {
+		return htmlContent, nil
+	}
+
+	var images []models.InlineImage
+	result := htmlContent
+
+	// 後ろから置換（インデックスずれ防止）
+	for i := len(matches) - 1; i >= 0; i-- {
+		m := matches[i]
+		// m[2]:m[3] = キャプチャグループ1（MIMEタイプ）
+		// m[4]:m[5] = キャプチャグループ2（Base64データ）
+		mimeType := result[m[2]:m[3]]
+		b64Data := result[m[4]:m[5]]
+		key := fmt.Sprintf("sig_img_%d", i)
+
+		images = append(images, models.InlineImage{
+			Key:      key,
+			Data:     b64Data,
+			MimeType: mimeType,
+		})
+
+		// src="data:...;base64,..." → src="cid:sig_img_X"
+		result = result[:m[0]] + `src="cid:` + key + `"` + result[m[1]:]
+	}
+
+	logger.Info("CID変換: %d画像をインライン画像に分離", len(images))
+	return result, images
+}
+
+// stripHtmlTags はHTMLタグを除去してプレーンテキストを返す
+func stripHtmlTags(s string) string {
+	re := regexp.MustCompile(`<br\s*/?>`)
+	result := re.ReplaceAllString(s, "\n")
+	re = regexp.MustCompile(`<[^>]*>`)
+	result = re.ReplaceAllString(result, "")
+	result = strings.ReplaceAll(result, "&amp;", "&")
+	result = strings.ReplaceAll(result, "&lt;", "<")
+	result = strings.ReplaceAll(result, "&gt;", ">")
+	result = strings.ReplaceAll(result, "&quot;", "\"")
+	result = strings.ReplaceAll(result, "&#39;", "'")
+	result = strings.ReplaceAll(result, "&nbsp;", " ")
+	return strings.TrimSpace(result)
 }
 
 // SaveTemplate はテンプレートを保存
@@ -388,6 +564,43 @@ func (a *App) ApplyTemplateVariables(text string, recipient *models.Recipient) s
 	}
 
 	return result
+}
+
+// MatchAllRecipientsByFileName はファイル名からマッチする宛先を全件返す
+func (a *App) MatchAllRecipientsByFileName(fileName string, recipients []models.Recipient) []models.Recipient {
+	baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+	parts := strings.FieldsFunc(baseName, func(r rune) bool {
+		return r == '_' || r == ' ' || r == '(' || r == ')' || r == '-'
+	})
+
+	var matched []models.Recipient
+	seen := map[string]bool{}
+
+	for _, part := range parts {
+		normalizedPart := normalizeString(part)
+		if normalizedPart == "" {
+			continue
+		}
+
+		for i, recipient := range recipients {
+			if seen[recipient.ID] {
+				continue
+			}
+			normalizedName := normalizeString(recipient.Name)
+			normalizedCompany := normalizeString(recipient.Company)
+			combined := normalizedName + normalizedCompany
+
+			if strings.Contains(normalizedName, normalizedPart) ||
+				strings.Contains(normalizedCompany, normalizedPart) ||
+				strings.Contains(combined, normalizedPart) {
+				logger.Info("宛先マッチ: %s -> %s (%s)", part, recipient.Name, recipient.Company)
+				matched = append(matched, recipients[i])
+				seen[recipient.ID] = true
+			}
+		}
+	}
+
+	return matched
 }
 
 // MatchRecipientByFileName はファイル名から宛先をマッチング

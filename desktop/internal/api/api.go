@@ -154,7 +154,7 @@ func (c *Client) doPost(payload interface{}) ([]byte, error) {
 			logger.Error("リクエスト作成失敗: %v", err)
 			continue
 		}
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
 
 		// Basic認証ヘッダーを追加
 		if authHeader := c.getAuthHeader(); authHeader != "" {

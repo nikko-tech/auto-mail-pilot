@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { GetConfig, SaveConfigWithAuth, TestConnection, GetVersion } from '../../wailsjs/go/main/App'
+import { GetConfig, SaveConfigWithAuth, TestConnection, GetVersion, GetHtmlSignature } from '../../wailsjs/go/main/App'
 
 const gasUrl = ref('')
 const signature = ref('')
+const htmlSignature = ref('')
 const basicAuthId = ref('')
 const basicAuthPw = ref('')
 const showPassword = ref(false)
@@ -19,6 +20,8 @@ onMounted(async () => {
     signature.value = config.signature || ''
     basicAuthId.value = config.basic_auth_id || ''
     basicAuthPw.value = config.basic_auth_pw || ''
+
+    htmlSignature.value = await GetHtmlSignature() || ''
 
     const info = await GetVersion()
     buildInfo.value = info
@@ -147,6 +150,18 @@ async function saveSettings() {
           placeholder="メール末尾に自動挿入される署名を入力"
           class="signature-input"
         ></textarea>
+      </div>
+    </div>
+
+    <!-- HTML署名（ファイルベース） -->
+    <div class="settings-section" v-if="htmlSignature">
+      <h3>HTML署名</h3>
+      <p class="hint">
+        exeと同じフォルダの <code>signature.html</code> から自動読み込みされます。
+        変更する場合はファイルを直接編集してアプリを再起動してください。
+      </p>
+      <div class="html-preview">
+        <div class="html-preview-content" v-html="htmlSignature"></div>
       </div>
     </div>
 
@@ -290,6 +305,27 @@ async function saveSettings() {
   border-radius: 4px;
   font-family: inherit;
   resize: vertical;
+}
+
+.html-preview {
+  margin-top: 12px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.html-preview h4 {
+  margin: 0 0 8px 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.html-preview-content {
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  border: 1px solid #eee;
 }
 
 .actions {

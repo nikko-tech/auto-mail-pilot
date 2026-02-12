@@ -15,10 +15,11 @@ const (
 
 // Config はアプリケーション設定
 type Config struct {
-	GASURL       string `json:"gas_url"`       // GAS WebアプリURL
-	Signature    string `json:"signature"`     // デフォルト署名
-	BasicAuthID  string `json:"basic_auth_id"` // Basic認証ID
-	BasicAuthPW  string `json:"basic_auth_pw"` // Basic認証パスワード
+	GASURL        string `json:"gas_url"`        // GAS WebアプリURL
+	Signature     string `json:"signature"`      // デフォルト署名（プレーンテキスト）
+	HtmlSignature string `json:"html_signature"` // HTML署名
+	BasicAuthID   string `json:"basic_auth_id"`  // Basic認証ID
+	BasicAuthPW   string `json:"basic_auth_pw"`  // Basic認証パスワード
 }
 
 // DefaultConfig はデフォルト設定を返す
@@ -93,6 +94,9 @@ func Load() (*Config, error) {
 					}
 					if userConfig.Signature != "" {
 						config.Signature = userConfig.Signature
+					}
+					if userConfig.HtmlSignature != "" {
+						config.HtmlSignature = userConfig.HtmlSignature
 					}
 					if userConfig.BasicAuthID != "" {
 						config.BasicAuthID = userConfig.BasicAuthID

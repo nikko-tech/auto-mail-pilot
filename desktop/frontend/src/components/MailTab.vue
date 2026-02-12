@@ -4,10 +4,11 @@ import {
   GetTemplates,
   GetRecipients,
   GetSignatures,
+  GetHtmlSignature,
   SendMail,
   OpenFileDialog,
   ApplyTemplateVariables,
-  MatchRecipientByFileName,
+  MatchAllRecipientsByFileName,
   MatchTemplateByFileName,
   ValidateSendSafety,
   ReadFilesAsAttachments
@@ -22,6 +23,8 @@ let offFileDropGo = null
 const templates = ref([])
 const recipients = ref([])
 const signature = ref('')
+const htmlSignature = ref('')
+const hasHtmlSignature = computed(() => htmlSignature.value !== '')
 
 // 検索フィルター
 const recipientSearch = ref('')
@@ -31,10 +34,11 @@ const templateSearch = ref('')
 const selectedRecipientIndex = ref(null)
 const selectedTemplateIndex = ref(null)
 
-// 宛先ロック状態
+// 宛先ロック状態（手動ロックのみ。ロック中はファイル追加時の自動切替を防ぐ）
 const recipientLocked = ref(false)
-const lockedRecipientId = ref(null)
-const lockedCompany = ref('')
+
+// ファイル名マッチの候補ID一覧（ハイライト用）
+const matchedRecipientIds = ref([])
 
 // メール編集用（最大3宛先）
 const activeRecipientTab = ref(0)
@@ -166,20 +170,28 @@ async function handleFileDrop(paths) {
 
 // ファイル名から宛先・テンプレートを自動選択
 async function autoSelectFromFileName(fileName) {
-  // 宛先マッチング（ロックされていない場合のみ）
+  // 宛先マッチング（ロック中はスキップ）
   if (!recipientLocked.value) {
-    const matchedRecipient = await MatchRecipientByFileName(fileName, recipients.value)
-    if (matchedRecipient) {
-      const index = recipients.value.findIndex(r => r.id === matchedRecipient.id)
+    const matches = await MatchAllRecipientsByFileName(fileName, recipients.value)
+    if (matches && matches.length > 0) {
+      // マッチした全候補のIDを保存（ハイライト用）
+      matchedRecipientIds.value = matches.map(r => r.id)
+
+      // 1件なら自動選択、複数なら最初の1件を選択しつつユーザーに選ばせる
+      const first = matches[0]
+      const index = recipients.value.findIndex(r => r.id === first.id)
       if (index >= 0) {
         selectedRecipientIndex.value = index
-        mailData.value[activeRecipientTab.value].email = matchedRecipient.email
-        // ファイルから自動選択した場合は自動ロック
-        recipientLocked.value = true
-        lockedRecipientId.value = matchedRecipient.id
-        lockedCompany.value = matchedRecipient.company
-        statusMessage.value = `宛先を自動選択＆ロック: ${matchedRecipient.company} ${matchedRecipient.name}`
+        mailData.value[activeRecipientTab.value].email = first.email
       }
+
+      if (matches.length === 1) {
+        statusMessage.value = `宛先を自動選択: ${first.company} ${first.name}`
+      } else {
+        statusMessage.value = `${matches.length}件の候補が見つかりました（黄色ハイライト）。クリックで変更できます`
+      }
+    } else {
+      matchedRecipientIds.value = []
     }
   }
 
@@ -199,17 +211,19 @@ async function loadData() {
   isLoading.value = true
   statusMessage.value = 'データ読み込み中...'
   try {
-    // テンプレート、宛先、署名を並列取得
-    const [tplResult, rcpResult, sigResult] = await Promise.all([
+    // テンプレート、宛先、署名、HTML署名を並列取得
+    const [tplResult, rcpResult, sigResult, htmlSigResult] = await Promise.all([
       GetTemplates(),
       GetRecipients(),
-      GetSignatures()
+      GetSignatures(),
+      GetHtmlSignature()
     ])
 
     console.log('GetSignatures result:', sigResult)
 
     templates.value = tplResult || []
     recipients.value = rcpResult || []
+    htmlSignature.value = htmlSigResult || ''
 
     // sigResult が配列でも { signatures: [...] } でも両対応
     const sigs = Array.isArray(sigResult)
@@ -238,14 +252,8 @@ async function loadData() {
   }
 }
 
-// 宛先選択
-function selectRecipient(index, forceUnlock = false) {
-  // ロックされている場合は警告
-  if (recipientLocked.value && !forceUnlock) {
-    statusMessage.value = '宛先はロックされています。変更するには「ロック解除」を押してください'
-    return
-  }
-
+// 宛先選択（常にクリック可能）
+function selectRecipient(index) {
   const realIndex = recipients.value.findIndex(r => r.id === filteredRecipients.value[index].id)
   selectedRecipientIndex.value = realIndex
   const recipient = recipients.value[realIndex]
@@ -261,23 +269,19 @@ function selectRecipient(index, forceUnlock = false) {
   statusMessage.value = `宛先を選択: ${recipient.company} ${recipient.name}`
 }
 
-// 宛先ロック
+// 宛先ロック（ファイル追加時の自動切替を防止。手動クリックは常に可能）
 function lockRecipient() {
   if (!selectedRecipient.value) {
     statusMessage.value = 'ロックする宛先を選択してください'
     return
   }
   recipientLocked.value = true
-  lockedRecipientId.value = selectedRecipient.value.id
-  lockedCompany.value = selectedRecipient.value.company
-  statusMessage.value = `宛先をロック: ${selectedRecipient.value.company} ${selectedRecipient.value.name}`
+  statusMessage.value = `宛先をロック: ${selectedRecipient.value.company} ${selectedRecipient.value.name}（ファイル追加時の自動切替を防止）`
 }
 
 // 宛先ロック解除
 function unlockRecipient() {
   recipientLocked.value = false
-  lockedRecipientId.value = null
-  lockedCompany.value = ''
   statusMessage.value = '宛先ロックを解除しました'
 }
 
@@ -388,9 +392,9 @@ function acknowledgeErrors() {
 async function sendMail() {
   const mail = mailData.value[activeRecipientTab.value]
 
-  // 本文に署名を追加
+  // 本文に署名を追加（HTML署名がある場合はGo側で処理するのでスキップ）
   let finalBody = mail.body
-  if (signature.value) {
+  if (!hasHtmlSignature.value && signature.value) {
     finalBody = mail.body + '\n\n' + signature.value
   }
 
@@ -404,16 +408,15 @@ async function sendMail() {
   try {
     const result = await SendMail(mail.email, mail.subject, finalBody, enabledAttachments)
     if (result.success) {
-      statusMessage.value = '✅ メール送信成功!'
-      // フォームクリア
+      statusMessage.value = '✅ メール送信成功! 次のファイルを追加してください'
+      // フォームを完全クリア
       mailData.value[activeRecipientTab.value] = { email: '', subject: '', body: '' }
       attachments.value = []
       selectedRecipientIndex.value = null
       selectedTemplateIndex.value = null
-      // ロック解除
+      matchedRecipientIds.value = []
       recipientLocked.value = false
-      lockedRecipientId.value = null
-      lockedCompany.value = ''
+      recipientSearch.value = ''
     } else {
       statusMessage.value = '❌ 送信失敗: ' + (result.error || '不明なエラー')
     }
@@ -430,9 +433,9 @@ function resetForm() {
   attachments.value = []
   selectedRecipientIndex.value = null
   selectedTemplateIndex.value = null
+  matchedRecipientIds.value = []
   recipientLocked.value = false
-  lockedRecipientId.value = null
-  lockedCompany.value = ''
+  recipientSearch.value = ''
   statusMessage.value = 'フォームをリセットしました'
 }
 </script>
@@ -477,21 +480,27 @@ function resetForm() {
               </button>
             </div>
           </div>
-          <div v-if="recipientLocked" class="lock-indicator">
-            🔒 {{ lockedCompany }}
+          <div v-if="recipientLocked && selectedRecipient" class="lock-indicator">
+            🔒 {{ selectedRecipient.company }} {{ selectedRecipient.name }}（自動切替OFF）
+          </div>
+          <div v-if="matchedRecipientIds.length > 1" class="match-indicator">
+            📋 {{ matchedRecipientIds.length }}件の候補 — クリックで選択してください
           </div>
           <input
             v-model="recipientSearch"
             type="text"
             placeholder="名前・会社名・メールで検索..."
             class="search-input"
-            :disabled="recipientLocked"
           />
-          <div class="selection-list" :class="{ locked: recipientLocked }">
+          <div class="selection-list">
             <div
               v-for="(recipient, index) in filteredRecipients"
               :key="recipient.id"
-              :class="['selection-item', { selected: recipients[selectedRecipientIndex]?.id === recipient.id }]"
+              :class="[
+                'selection-item',
+                { selected: recipients[selectedRecipientIndex]?.id === recipient.id },
+                { matched: matchedRecipientIds.includes(recipient.id) }
+              ]"
               @click="selectRecipient(index)"
             >
               <div class="item-main">{{ recipient.company }}</div>
@@ -566,7 +575,8 @@ function resetForm() {
               {{ showSignature ? '▼' : '▶' }}
             </button>
           </div>
-          <pre v-if="showSignature" class="signature-preview">{{ signature || '（署名なし）' }}</pre>
+          <div v-if="showSignature && hasHtmlSignature" class="signature-preview signature-html" v-html="htmlSignature"></div>
+          <pre v-else-if="showSignature" class="signature-preview">{{ signature || '（署名なし）' }}</pre>
         </div>
       </div>
 
@@ -597,13 +607,11 @@ function resetForm() {
                   type="email"
                   placeholder="メールアドレス"
                   class="email-input"
-                  :class="{ locked: recipientLocked }"
-                  :readonly="recipientLocked"
                 />
               </div>
             </div>
-            <div v-if="selectedRecipient" class="recipient-info-row" :class="{ locked: recipientLocked }">
-              <span v-if="recipientLocked">🔒</span>
+            <div v-if="selectedRecipient" class="recipient-info-row">
+              <span v-if="recipientLocked">🔒 </span>
               {{ selectedRecipient.company }} / {{ selectedRecipient.name }}
             </div>
 
@@ -861,11 +869,6 @@ function resetForm() {
   min-height: 100px;
 }
 
-.selection-list.locked {
-  opacity: 0.7;
-  pointer-events: none;
-}
-
 .selection-item {
   padding: 8px 10px;
   cursor: pointer;
@@ -879,6 +882,26 @@ function resetForm() {
 .selection-item.selected {
   background: #e3f2fd;
   border-left: 3px solid #1976d2;
+}
+
+.selection-item.matched {
+  background: #fff8e1;
+  border-left: 3px solid #ffa000;
+}
+
+.selection-item.matched.selected {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+}
+
+.match-indicator {
+  padding: 4px 8px;
+  background: #fff8e1;
+  border: 1px solid #ffa000;
+  border-radius: 4px;
+  color: #e65100;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
 }
 
 .item-main {
@@ -1013,6 +1036,12 @@ function resetForm() {
   color: #666;
   max-height: 150px;
   overflow-y: auto;
+}
+
+.signature-html {
+  white-space: normal;
+  color: inherit;
+  border: 1px solid #e0e0e0;
 }
 
 /* メールパネル */

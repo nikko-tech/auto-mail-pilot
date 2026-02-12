@@ -204,8 +204,26 @@ function sendMail(payload) {
       });
     }
 
+    // HTML本文が指定されている場合はHTMLメールとして送信
+    if (payload.htmlBody) {
+      options.htmlBody = payload.htmlBody;
+    }
+
+    // インライン画像（CID参照用）
+    if (payload.inlineImages && payload.inlineImages.length > 0) {
+      const imgs = {};
+      payload.inlineImages.forEach(function(img) {
+        imgs[img.key] = Utilities.newBlob(
+          Utilities.base64Decode(img.data),
+          img.mimeType,
+          img.key
+        );
+      });
+      options.inlineImages = imgs;
+    }
+
     GmailApp.sendEmail(payload.to, payload.subject, payload.body, options);
-    
+
     // Log history
     logSentMail({
       to: payload.to,
@@ -246,6 +264,9 @@ function sendBatchMail(payload) {
               att.fileName
             );
           });
+        }
+        if (email.htmlBody) {
+          options.htmlBody = email.htmlBody;
         }
         GmailApp.sendEmail(email.to, email.subject, email.body, options);
         results.push({ to: email.to, success: true });
