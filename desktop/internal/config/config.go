@@ -2,8 +2,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -71,23 +73,42 @@ func Load() (*Config, error) {
 	exeDir, err := GetExeDir()
 	if err == nil {
 		exeConfigPath := filepath.Join(exeDir, configFile)
+		log.Printf("[CONFIG] exeディレクトリ設定パス: %s", exeConfigPath)
 		if _, err := os.Stat(exeConfigPath); err == nil {
 			data, err := os.ReadFile(exeConfigPath)
-			if err == nil {
-				json.Unmarshal(data, config)
+			if err != nil {
+				log.Printf("[CONFIG] exeディレクトリ設定読み込み失敗: %v", err)
+			} else {
+				data = stripBOM(data)
+				if jsonErr := json.Unmarshal(data, config); jsonErr != nil {
+					log.Printf("[CONFIG] exeディレクトリ設定JSONパース失敗: %v (先頭: %q)", jsonErr, truncate(data, 100))
+				} else {
+					log.Printf("[CONFIG] exeディレクトリ設定読み込み成功: gas_url=%s", truncateStr(config.GASURL, 60))
+				}
 			}
+		} else {
+			log.Printf("[CONFIG] exeディレクトリ設定未検出: %s", exeConfigPath)
 		}
+	} else {
+		log.Printf("[CONFIG] exeディレクトリ取得失敗: %v", err)
 	}
 
 	// 2. ユーザー設定ディレクトリの設定を読み込み（上書き）
 	userConfigDir, err := GetUserConfigDir()
 	if err == nil {
 		userConfigPath := filepath.Join(userConfigDir, configFile)
+		log.Printf("[CONFIG] ユーザー設定パス: %s", userConfigPath)
 		if _, err := os.Stat(userConfigPath); err == nil {
 			data, err := os.ReadFile(userConfigPath)
-			if err == nil {
+			if err != nil {
+				log.Printf("[CONFIG] ユーザー設定読み込み失敗: %v", err)
+			} else {
+				data = stripBOM(data)
 				var userConfig Config
-				if json.Unmarshal(data, &userConfig) == nil {
+				if jsonErr := json.Unmarshal(data, &userConfig); jsonErr != nil {
+					log.Printf("[CONFIG] ユーザー設定JSONパース失敗: %v (先頭: %q)", jsonErr, truncate(data, 100))
+				} else {
+					log.Printf("[CONFIG] ユーザー設定読み込み成功")
 					// ユーザー設定で上書き
 					if userConfig.GASURL != "" {
 						config.GASURL = userConfig.GASURL
@@ -106,6 +127,8 @@ func Load() (*Config, error) {
 					}
 				}
 			}
+		} else {
+			log.Printf("[CONFIG] ユーザー設定未検出: %s", userConfigPath)
 		}
 	}
 
@@ -144,4 +167,25 @@ func GetConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(userConfigDir, configFile), nil
+}
+
+// stripBOM はUTF-8 BOM（0xEF 0xBB 0xBF）を除去する
+func stripBOM(data []byte) []byte {
+	return bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+}
+
+// truncate はバイト列を指定長で切り詰めて返す（ログ用）
+func truncate(data []byte, maxLen int) []byte {
+	if len(data) <= maxLen {
+		return data
+	}
+	return data[:maxLen]
+}
+
+// truncateStr は文字列を指定長で切り詰めて返す（ログ用）
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

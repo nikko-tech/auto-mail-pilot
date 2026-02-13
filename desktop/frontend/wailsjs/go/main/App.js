@@ -10,6 +10,10 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetHtmlSignature() {
+  return window['go']['main']['App']['GetHtmlSignature']();
+}
+
 export function GetRecipients() {
   return window['go']['main']['App']['GetRecipients']();
 }
@@ -28,6 +32,10 @@ export function GetTemplates() {
 
 export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
+}
+
+export function MatchAllRecipientsByFileName(arg1, arg2) {
+  return window['go']['main']['App']['MatchAllRecipientsByFileName'](arg1, arg2);
 }
 
 export function MatchRecipientByFileName(arg1, arg2) {
@@ -56,6 +64,10 @@ export function SaveConfig(arg1, arg2) {
 
 export function SaveConfigWithAuth(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveConfigWithAuth'](arg1, arg2, arg3, arg4);
+}
+
+export function SaveHtmlSignature(arg1) {
+  return window['go']['main']['App']['SaveHtmlSignature'](arg1);
 }
 
 export function SaveTemplate(arg1, arg2, arg3, arg4) {

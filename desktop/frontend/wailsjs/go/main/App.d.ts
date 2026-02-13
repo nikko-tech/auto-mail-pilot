@@ -7,6 +7,8 @@ export function ApplyTemplateVariables(arg1:string,arg2:models.Recipient):Promis
 
 export function GetConfig():Promise<config.Config>;
 
+export function GetHtmlSignature():Promise<string>;
+
 export function GetRecipients():Promise<Array<models.Recipient>>;
 
 export function GetSettings():Promise<models.SettingsResponse>;
@@ -16,6 +18,8 @@ export function GetSignatures():Promise<Array<models.Signature>>;
 export function GetTemplates():Promise<Array<models.Template>>;
 
 export function GetVersion():Promise<Record<string, string>>;
+
+export function MatchAllRecipientsByFileName(arg1:string,arg2:Array<models.Recipient>):Promise<Array<models.Recipient>>;
 
 export function MatchRecipientByFileName(arg1:string,arg2:Array<models.Recipient>):Promise<models.Recipient>;
 
@@ -30,6 +34,8 @@ export function ReadFilesAsAttachments(arg1:Array<string>):Promise<Array<models.
 export function SaveConfig(arg1:string,arg2:string):Promise<void>;
 
 export function SaveConfigWithAuth(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SaveHtmlSignature(arg1:string):Promise<void>;
 
 export function SaveTemplate(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
